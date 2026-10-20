@@ -12,6 +12,8 @@ import net.minecraft.util.math.Vec3d;
 
 /** On-screen info: build mode warning, damage left in the base you're in, and what belongs where you're aiming. */
 public final class Hud {
+	private static final String[] ARROWS = {"↑", "↗", "→", "↘", "↓", "↙", "←", "↖"};
+
 	private Hud() {}
 
 	public static void render(DrawContext context, RenderTickCounter tickCounter, BaseManager manager, Scanner scanner) {
@@ -46,6 +48,15 @@ public final class Hud {
 			if (percent < 100) {
 				// Until the whole base has been seen up close, say so, with a little progress bar.
 				Text progress = Text.translatable("baseinsurance.hud.snapshot", here.name, percent);
+				var unseen = here.nearestUnseen(client.player.getX(), client.player.getZ());
+				if (unseen != null) {
+					double dx = unseen.x - client.player.getX(), dz = unseen.z - client.player.getZ();
+					int distance = (int) Math.sqrt(dx * dx + dz * dz);
+					float relative = net.minecraft.util.math.MathHelper.wrapDegrees((float) Math.toDegrees(Math.atan2(-dx, dz)) - client.player.getYaw());
+					String arrow = ARROWS[Math.floorMod(Math.round(relative / 45f), 8)];
+					progress = distance < 6 ? Text.translatable("baseinsurance.hud.snapshot_here", here.name, percent)
+							: Text.translatable("baseinsurance.hud.snapshot_unseen", here.name, percent, distance, arrow);
+				}
 				drawCorner(context, font, progress, y, 0xFFFFD040, right);
 				int barWidth = font.getWidth(progress);
 				int barX = right ? context.getScaledWindowWidth() - 4 - barWidth : 4;

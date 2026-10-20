@@ -2,7 +2,10 @@ package com.greysworkshop.baseinsurance;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +52,7 @@ public final class Base {
 	public transient long followUpDue;
 	private transient long progressAt;
 	private transient int[] progress;
+	private transient Map<Long, Float> coverage;
 
 	/**
 	 * {trusted, total} blocks: how much of the base has been seen up close. Cached for a second, as it walks
@@ -58,30 +62,64 @@ public final class Base {
 		long now = System.currentTimeMillis();
 		if (progress != null && now - progressAt < 1000) return progress;
 		int trusted = 0, total = 0;
+		Map<Long, int[]> columns = new HashMap<>();
 		for (long key : sections()) {
 			int sx = ChunkSectionPos.unpackX(key), sy = ChunkSectionPos.unpackY(key), sz = ChunkSectionPos.unpackZ(key);
 			int x0 = Math.max(sx << 4, minX), x1 = Math.min((sx << 4) + 15, maxX);
 			int y0 = Math.max(sy << 4, minY), y1 = Math.min((sy << 4) + 15, maxY);
 			int z0 = Math.max(sz << 4, minZ), z1 = Math.min((sz << 4) + 15, maxZ);
-			total += (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+			int volume = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+			int seen = 0;
 			Baseline.Section section = baseline.sections.get(key);
-			if (section == null || section.trusted.isEmpty()) continue;
-			if (x0 == sx << 4 && x1 == x0 + 15 && y0 == sy << 4 && y1 == y0 + 15 && z0 == sz << 4 && z1 == z0 + 15) {
-				trusted += section.trusted.cardinality();
-				continue;
-			}
-			for (int y = y0; y <= y1; y++) {
-				for (int z = z0; z <= z1; z++) {
-					for (int x = x0; x <= x1; x++) {
-						if (section.isTrusted(Baseline.index(x, y, z))) trusted++;
+			if (section != null && !section.trusted.isEmpty()) {
+				if (x0 == sx << 4 && x1 == x0 + 15 && y0 == sy << 4 && y1 == y0 + 15 && z0 == sz << 4 && z1 == z0 + 15) {
+					seen = section.trusted.cardinality();
+				} else {
+					for (int y = y0; y <= y1; y++) {
+						for (int z = z0; z <= z1; z++) {
+							for (int x = x0; x <= x1; x++) {
+								if (section.isTrusted(Baseline.index(x, y, z))) seen++;
+							}
+						}
 					}
 				}
 			}
+			total += volume;
+			trusted += seen;
+			int[] column = columns.computeIfAbsent(ChunkPos.toLong(sx, sz), k -> new int[2]);
+			column[0] += seen;
+			column[1] += volume;
 		}
 		progress = new int[]{trusted, total};
+		coverage = new HashMap<>();
+		for (Map.Entry<Long, int[]> e : columns.entrySet()) coverage.put(e.getKey(), e.getValue()[0] / (float) e.getValue()[1]);
 		progressAt = now;
 		return progress;
 	}
+
+	/** Fraction of each 16×16 column (by ChunkPos long) seen up close. */
+	public Map<Long, Float> coverage() {
+		snapshotProgress();
+		return coverage;
+	}
+
+	/** The middle of the nearest column that's mostly unseen, or null if it's all been seen. */
+	public Vec3d nearestUnseen(double px, double pz) {
+		Vec3d best = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Map.Entry<Long, Float> e : coverage().entrySet()) {
+			if (e.getValue() >= 0.9f) continue;
+			int cx = ChunkPos.getPackedX(e.getKey()), cz = ChunkPos.getPackedZ(e.getKey());
+			double x = MathHelper.clamp((cx << 4) + 8, minX, maxX + 1), z = MathHelper.clamp((cz << 4) + 8, minZ, maxZ + 1);
+			double d = (x - px) * (x - px) + (z - pz) * (z - pz);
+			if (d < bestDistance) {
+				bestDistance = d;
+				best = new Vec3d(x, 0, z);
+			}
+		}
+		return best;
+	}
+
 
 	public int snapshotPercent() {
 		int[] p = snapshotProgress();

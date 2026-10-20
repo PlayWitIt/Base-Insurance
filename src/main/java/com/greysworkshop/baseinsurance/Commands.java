@@ -52,6 +52,10 @@ public final class Commands {
 		dispatcher.register(literal("bi")
 				.executes(Commands::help)
 				.then(literal("help").executes(Commands::help))
+				.then(literal("guide").executes(c -> {
+					mod().openLater(new GuideScreen(null));
+					return 1;
+				}))
 				.then(literal("map").executes(c -> {
 					mod().openLater(new MapScreen());
 					return 1;
@@ -102,6 +106,7 @@ public final class Commands {
 				{"/bi create [name]", "pick an area to protect on the map"},
 				{"/bi create <name> <radius> [down] [up]", "protect the area around you right away"},
 				{"/bi map", "your explored world, bases and damage (or press M)"},
+				{"/bi guide", "how to get started"},
 				{"/bi report [name]", "open the damage report"},
 				{"/bi overlay", "show/hide changed blocks in the world"},
 				{"/bi build", "build mode: your big changes (TNT, pistons, water) go straight into the snapshot"},

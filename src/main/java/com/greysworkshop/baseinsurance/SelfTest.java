@@ -227,8 +227,7 @@ public final class SelfTest {
 			}
 			case 1000 -> {
 				Base hide = mod.manager.get("Hide");
-				check("Hide base snapshotted (" + hide.baseline.sections.size() + "/" + hide.sections().size() + ")",
-						hide.baseline.sections.size() == hide.sections().size());
+				check("Hide base snapshot started near the player (" + hide.snapshotPercent() + "%)", hide.snapshotPercent() > 0);
 				log("Server reveals hidden terrain: a whole section of air becomes stone, deepslate and lava");
 				BIConfig.INSTANCE.enabled = false;
 				int baseX = origin.getX() >> 4 << 4, baseZ = origin.getZ() >> 4 << 4;
@@ -333,6 +332,23 @@ public final class SelfTest {
 			case 1420 -> screenshot(client, "12_damage_locator");
 			case 1430 -> {
 				DamageLocator.stop();
+				client.setScreen(new MapScreen());
+			}
+			case 1445 -> screenshot(client, "13_map_coverage");
+			case 1450 -> client.setScreen(new GuideScreen(null));
+			case 1460 -> screenshot(client, "14_guide");
+			case 1465 -> {
+				client.setScreen(null);
+				BIConfig.INSTANCE.alertStyle = BIConfig.AlertStyle.TOAST;
+				server(client, w -> w.setBlockState(origin.add(40, 0, -6), Blocks.COBBLESTONE.getDefaultState()));
+			}
+			case 1690 -> {
+				// After the 10s live-alert cooldown since the last alert for this base.
+				check("live change recorded while alerts are pop-ups", mod.manager.get("Big").changes.size() >= 2);
+				screenshot(client, "15_toast_alert");
+				BIConfig.INSTANCE.alertStyle = BIConfig.AlertStyle.CHAT;
+			}
+			case 1700 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

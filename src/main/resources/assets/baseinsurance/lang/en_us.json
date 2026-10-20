@@ -37,7 +37,7 @@
 	"baseinsurance.map.help": "Drag to move · Scroll to zoom · Click a base for its report",
 	"baseinsurance.map.help_create": "Drag the edges or corners to resize · Drag the middle to move · Scroll to zoom",
 	"baseinsurance.map.tip_intact": "%s: intact (click for report)",
-	"baseinsurance.map.tip_damage": "%s: %s changed blocks (click for report)",
+	"baseinsurance.map.tip_damage": "%s: %s (click for report)",
 	"baseinsurance.config.title": "Base Insurance Settings",
 	"baseinsurance.config.tab.alerts": "Alerts",
 	"baseinsurance.config.tab.detection": "Detection",
@@ -92,7 +92,7 @@
 	"baseinsurance.config.theft_alerts": "Theft alerts",
 	"baseinsurance.config.theft_alerts.desc": "Alert when a container you've opened before is missing items. Always recorded in the report either way.",
 	"baseinsurance.config.alert_style": "Show alerts in",
-	"baseinsurance.config.alert_style.desc": "Chat keeps a history you can scroll back through; the action bar is the text above your hotbar.",
+	"baseinsurance.config.alert_style.desc": "Chat keeps a history you can scroll back through; the action bar is the text above your hotbar; pop-up cards appear in the top right corner and don't clutter chat. Everything is also kept in each base's timeline.",
 	"baseinsurance.config.alert_style.chat": "Chat",
 	"baseinsurance.config.alert_style.action_bar": "Action bar",
 	"baseinsurance.config.alert_style.both": "Chat + action bar",
@@ -173,5 +173,9 @@
 	"baseinsurance.hud.snapshot": "⚑ %s: snapshot %s%% · walk around to finish",
 	"baseinsurance.report.tab.damage": "Damage",
 	"baseinsurance.report.undo": "Undo",
-	"baseinsurance.hud.damage_one": "⚑ %s: 1 block to fix"
+	"baseinsurance.hud.damage_one": "⚑ %s: 1 block to fix",
+	"baseinsurance.config.alert_style.toast": "Pop-up card",
+	"baseinsurance.config.alert_style.toast_and_chat": "Pop-up card + chat",
+	"baseinsurance.hud.snapshot_unseen": "⚑ %s: snapshot %s%% · unseen part %sm %s",
+	"baseinsurance.hud.snapshot_here": "⚑ %s: snapshot %s%% · look around here"
 }

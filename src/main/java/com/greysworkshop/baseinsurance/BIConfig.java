@@ -18,7 +18,21 @@ public final class BIConfig {
 
 	public static BIConfig INSTANCE = new BIConfig();
 
-	public enum AlertStyle { CHAT, ACTION_BAR, BOTH }
+	public enum AlertStyle {
+		CHAT, ACTION_BAR, BOTH, TOAST, TOAST_AND_CHAT;
+
+		boolean chat() {
+			return this == CHAT || this == BOTH || this == TOAST_AND_CHAT;
+		}
+
+		boolean actionBar() {
+			return this == ACTION_BAR || this == BOTH;
+		}
+
+		boolean toast() {
+			return this == TOAST || this == TOAST_AND_CHAT;
+		}
+	}
 
 	public enum Corner { TOP_LEFT, TOP_RIGHT }
 
@@ -104,6 +118,8 @@ public final class BIConfig {
 	/** Extra block ids to ignore changes to, e.g. "minecraft:cobblestone". */
 	public List<String> ignoredBlocks = new ArrayList<>();
 	public int maxEvents = 500;
+	/** Whether the "new here? open the guide" message has been shown. */
+	public boolean seenGuide = false;
 
 	public boolean isFriend(String name) {
 		for (String friend : friends) {

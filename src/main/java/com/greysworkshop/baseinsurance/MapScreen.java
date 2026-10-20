@@ -353,7 +353,7 @@ public class MapScreen extends Screen {
 			if (base != null) {
 				Text tip = base.changes.isEmpty()
 						? Text.translatable("baseinsurance.map.tip_intact", base.name)
-						: Text.translatable("baseinsurance.map.tip_damage", base.name, base.changes.size());
+						: Text.translatable("baseinsurance.map.tip_damage", base.name, Alerts.plural(base.changes.size(), "changed block"));
 				context.drawTooltip(textRenderer, tip, mouseX, mouseY);
 			}
 		}
@@ -402,8 +402,19 @@ public class MapScreen extends Screen {
 		boolean damaged = !base.changes.isEmpty();
 		int color = damaged ? 0xFFFF5050 : 0xFF50FF70;
 		context.fill(x0, y0, x1, y1, (color & 0xFFFFFF) | 0x28000000);
+		// Shade the parts not seen up close yet: the darker, the less has been seen.
+		for (var column : base.coverage().entrySet()) {
+			float seen = column.getValue();
+			if (seen >= 0.95f) continue;
+			int cx = net.minecraft.util.math.ChunkPos.getPackedX(column.getKey()), cz = net.minecraft.util.math.ChunkPos.getPackedZ(column.getKey());
+			int sx0 = (int) screenX(Math.max(cx << 4, base.minX)), sx1 = (int) screenX(Math.min((cx << 4) + 16, base.maxX + 1));
+			int sy0 = (int) screenY(Math.max(cz << 4, base.minZ)), sy1 = (int) screenY(Math.min((cz << 4) + 16, base.maxZ + 1));
+			int alpha = (int) ((1 - seen) * 150);
+			context.fill(sx0, sy0, sx1, sy1, alpha << 24);
+		}
 		context.drawStrokedRectangle(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), color);
-		String label = damaged ? base.name + " ⚠" + base.changes.size() : base.name;
+		int percent = base.snapshotPercent();
+		String label = (damaged ? base.name + " ⚠" + base.changes.size() : base.name) + (percent < 100 ? "  ◔" + percent + "%" : "");
 		int w = textRenderer.getWidth(label);
 		int lx = (x0 + x1) / 2 - w / 2;
 		int ly = y0 - 11;

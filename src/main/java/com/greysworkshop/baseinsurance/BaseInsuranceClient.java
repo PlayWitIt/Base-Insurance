@@ -47,6 +47,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	private KeyBinding mapKey;
 	private Screen pendingScreen;
 	private int saveTimer;
+	private int welcomeTimer;
 
 	@Override
 	public void onInitializeClient() {
@@ -165,6 +166,13 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		manager.switchTo(BaseManager.worldKey(client));
 		if (!BIConfig.INSTANCE.enabled || manager.worldKey() == null) return;
 
+		if (!BIConfig.INSTANCE.seenGuide && ++welcomeTimer == 200) {
+			BIConfig.INSTANCE.seenGuide = true;
+			BIConfig.save();
+			Alerts.chat(Text.literal("New here? ").formatted(Formatting.GRAY).append(Text.literal("[Open the guide]").styled(s -> s
+					.withColor(Formatting.AQUA).withUnderline(true).withClickEvent(new net.minecraft.text.ClickEvent.RunCommand("/bi guide"))))
+					.append(Text.literal(" or type /bi guide.").formatted(Formatting.GRAY)));
+		}
 		scanner.tick(client);
 		watcher.tick(client);
 		DamageLocator.tick(client);

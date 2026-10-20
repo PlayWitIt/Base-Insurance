@@ -2,6 +2,7 @@ package com.greysworkshop.baseinsurance;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.client.toast.SystemToast;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.MutableText;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 
 /** Chat messages, sounds and text formatting. Everything here stays on your client; nothing is sent to the server. */
 public final class Alerts {
+	private static final SystemToast.Type TOAST = new SystemToast.Type(8000L);
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MMM d HH:mm").withZone(ZoneId.systemDefault());
 
 	private Alerts() {}
@@ -34,8 +36,15 @@ public final class Alerts {
 	public static void alert(Text message, boolean urgent) {
 		BIConfig config = BIConfig.INSTANCE;
 		MinecraftClient client = MinecraftClient.getInstance();
-		if (config.alertStyle != BIConfig.AlertStyle.ACTION_BAR) chat(message);
-		if (config.alertStyle != BIConfig.AlertStyle.CHAT) client.inGameHud.setOverlayMessage(message, false);
+		if (config.alertStyle.chat()) chat(message);
+		if (config.alertStyle.actionBar()) client.inGameHud.setOverlayMessage(message, false);
+		if (config.alertStyle.toast()) {
+			// One toast at a time: a new alert replaces the one showing.
+			// create() wraps long text onto several lines; the plain constructor makes one very wide line.
+			SystemToast.hide(client.getToastManager(), TOAST);
+			client.getToastManager().add(SystemToast.create(client, TOAST,
+					Text.literal("Base Insurance").formatted(urgent ? Formatting.RED : Formatting.GREEN, Formatting.BOLD), message));
+		}
 		sound(urgent);
 	}
 
