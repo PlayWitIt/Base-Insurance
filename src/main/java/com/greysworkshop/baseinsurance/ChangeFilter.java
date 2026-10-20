@@ -68,8 +68,17 @@ public final class ChangeFilter {
 		BIConfig config = BIConfig.INSTANCE;
 		// Anti-xray on many servers swaps ores and stone (or adds fake ores), so rock-for-rock changes are noise.
 		if (config.ignoreOreSwaps && isRock(was) && isRock(now)) return true;
-		if (config.ignoreFlowingFluids && (isFlowing(was) || isFlowing(now))) return true;
-		return isNatural(was) || isNatural(now);
+		// Natural blocks (and flowing fluids, and ignored types) only cancel a change when the other side is "soft"
+		// too: grass coming and going is noise, but a chest that's now fire, or grass that's now lava, is damage.
+		if (config.ignorePlants && was.isIn(BlockTags.SAPLINGS) && (now.isIn(BlockTags.LOGS) || now.isIn(BlockTags.LEAVES))) return true;
+		boolean naturalWas = isNatural(was) || (config.ignoreFlowingFluids && isFlowing(was));
+		boolean naturalNow = isNatural(now) || (config.ignoreFlowingFluids && isFlowing(now));
+		return (naturalWas && isSoft(now)) || (naturalNow && isSoft(was));
+	}
+
+	/** Air, any fluid, or a natural block: something whose disappearance isn't damage on its own. */
+	private static boolean isSoft(BlockState state) {
+		return state.isAir() || !state.getFluidState().isEmpty() || isNatural(state);
 	}
 
 	private static boolean isRock(BlockState state) {

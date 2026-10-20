@@ -480,6 +480,11 @@ public final class SelfTest {
 				// Some fresh damage for the Rebuild tab (well before it opens, so a scan pass has seen it).
 				for (int x = 2; x <= 4; x++) w.setBlockState(origin.add(x, -1, 6), Blocks.AIR.getDefaultState());
 			});
+			case 2210 -> {
+				Base t = mod.manager.get("Test");
+				check("a block replaced by flowing lava still counts as damage (" + t.changes.size() + " changes; block is "
+						+ client.world.getBlockState(origin.add(3, -1, 6)).getBlock().getName().getString() + ")", t.changes.size() >= 3);
+			}
 			case 2225 -> {
 				ReportScreen report = new ReportScreen(mod.manager.get("Test"));
 				client.setScreen(report);
