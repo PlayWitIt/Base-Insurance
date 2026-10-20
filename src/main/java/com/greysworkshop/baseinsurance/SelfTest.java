@@ -440,6 +440,9 @@ public final class SelfTest {
 				for (var e : mod.manager.get("Test").entities.entrySet()) log("  entity record " + e.getKey() + ": " + e.getValue().detail());
 				long frames = mod.manager.get("Test").entities.keySet().stream().filter(k -> k.startsWith("minecraft:item_frame")).count();
 				long stands = mod.manager.get("Test").entities.keySet().stream().filter(k -> k.startsWith("minecraft:armor_stand")).count();
+				// Nudge the stand: being pushed isn't a change.
+				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.ARMOR_STAND, e -> true)
+						.forEach(stand -> stand.setPosition(stand.getX() + 1.2, stand.getY(), stand.getZ())));
 				check("item frame and armor stand recorded (" + frames + " frame, " + stands + " stand)", frames == 1 && stands == 1);
 				log("A griefer takes the diamond out of the frame");
 				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.ITEM_FRAME, e -> true)
@@ -473,7 +476,34 @@ public final class SelfTest {
 			}
 			case 2220 -> check("own frame breaking isn't reported (" + mod.manager.get("Test").entityChanges.size() + " entity changes)",
 					mod.manager.get("Test").entityChanges.isEmpty());
+			case 2190 -> server(client, w -> {
+				// Some fresh damage for the Rebuild tab.
+				for (int x = 2; x <= 4; x++) w.setBlockState(origin.add(x, -1, 6), Blocks.AIR.getDefaultState());
+			});
+			case 2225 -> {
+				ReportScreen report = new ReportScreen(mod.manager.get("Test"));
+				client.setScreen(report);
+				report.showTab("REBUILD");
+			}
 			case 2230 -> {
+				if (client.currentScreen instanceof ReportScreen report) report.testAction("Fetch with Container Peek");
+			}
+			case 2233 -> {
+				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json");
+				check("Rebuild tab hands the materials to Container Peek", java.nio.file.Files.exists(handOff));
+				try {
+					client.setScreen((net.minecraft.client.gui.screen.Screen) Class.forName("com.greysworkshop.containerpeek.SearchScreen")
+							.getConstructor().newInstance());
+				} catch (ReflectiveOperationException e) {
+					log("FAIL could not open Container Peek's search: " + e);
+				}
+			}
+			case 2245 -> {
+				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json");
+				check("Container Peek picked up the handed-over fetch list", !java.nio.file.Files.exists(handOff));
+				screenshot(client, "16_fetch_from_rebuild");
+			}
+			case 2260 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

@@ -424,7 +424,14 @@ public class ReportScreen extends Screen {
 			return lines;
 		}
 		int blocks = needs.stream().mapToInt(Materials.Need::needed).sum();
-		lines.add(header("To restore " + base.name + ": " + blocks + " blocks of " + needs.size() + " kinds", GOLD));
+		List<Action> headerActions = new ArrayList<>();
+		if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("containerpeek") && !needs.isEmpty()) {
+			headerActions.add(new Action("Fetch with Container Peek", CYAN, () -> {
+				flash(sendToFetchList(needs) ? "Sent to Container Peek: open Storage Search (Y) → Fetch list" : "Couldn't write the fetch list");
+			}));
+		}
+		lines.add(new Line(Text.literal("To restore " + base.name + ": " + blocks + " blocks of " + needs.size() + " kinds"),
+				ItemStack.EMPTY, GOLD, 0, true, headerActions));
 		lines.add(text("Green: you're carrying enough. Yellow: enough in storage. Red: you'll need more. Find walks you to the storage.", GRAY));
 		if (added > 0) lines.add(text(Alerts.plural(added, "block") + " placed by someone else just need removing (orange in the overlay).", 0xFF000000 | Overlay.ADDED));
 		lines.add(blank());
@@ -459,6 +466,33 @@ public class ReportScreen extends Screen {
 	}
 
 	// ---- Helpers ----
+
+	/**
+	 * Hands the materials still needed (beyond what you're carrying) to Container Peek's fetch list, through a
+	 * small file it picks up next time Storage Search opens.
+	 */
+	private static boolean sendToFetchList(List<Materials.Need> needs) {
+		com.google.gson.JsonArray items = new com.google.gson.JsonArray();
+		for (Materials.Need need : needs) {
+			int missing = need.needed() - need.carried();
+			if (missing <= 0) continue;
+			com.google.gson.JsonObject item = new com.google.gson.JsonObject();
+			item.addProperty("id", Registries.ITEM.getId(need.item()).toString());
+			item.addProperty("count", missing);
+			items.add(item);
+		}
+		com.google.gson.JsonObject root = new com.google.gson.JsonObject();
+		root.addProperty("from", "Base Insurance");
+		root.add("items", items);
+		try {
+			java.nio.file.Files.writeString(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json"),
+					root.toString());
+			return true;
+		} catch (java.io.IOException e) {
+			BaseInsuranceClient.LOGGER.warn("Could not write fetch list", e);
+			return false;
+		}
+	}
 
 	private static ItemStack entityIcon(Base.EntityRecord record) {
 		return switch (record.type) {

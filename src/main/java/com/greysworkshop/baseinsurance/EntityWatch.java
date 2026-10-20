@@ -51,9 +51,13 @@ public final class EntityWatch {
 		return entity instanceof ItemFrameEntity || entity instanceof ArmorStandEntity || entity instanceof PaintingEntity;
 	}
 
-	/** Identifies an entity by type, block and facing: a frame swapped for another in the same spot is "the same". */
+	/**
+	 * Identifies an entity. Frames and paintings by type, block and facing (a frame swapped for another in the
+	 * same spot is "the same"); armor stands by their unique id, since they can be pushed around.
+	 */
 	public static String key(Entity entity) {
 		String type = Registries.ENTITY_TYPE.getId(entity.getType()).toString();
+		if (entity instanceof ArmorStandEntity) return type + "#" + entity.getUuidAsString();
 		String facing = entity instanceof ItemFrameEntity frame ? "/" + frame.getHorizontalFacing().asString()
 				: entity instanceof PaintingEntity painting ? "/" + painting.getHorizontalFacing().asString() : "";
 		return type + "@" + entity.getBlockX() + "," + entity.getBlockY() + "," + entity.getBlockZ() + facing;
@@ -138,6 +142,11 @@ public final class EntityWatch {
 			}
 			Base.EntityChange change = base.entityChanges.get(key);
 			if (was.detail().equals(now.detail())) {
+				// Same contents; an armor stand may just have been pushed, so keep its position current.
+				if (was.x != now.x || was.y != now.y || was.z != now.z) {
+					base.entities.put(key, now);
+					base.dirty = true;
+				}
 				if (change != null) {
 					base.entityChanges.remove(key);
 					base.dirty = true;
