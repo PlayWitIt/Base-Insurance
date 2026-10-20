@@ -39,7 +39,7 @@ public final class Hud {
 			if (count > 0 || Overlay.enabled) {
 				Text status = count == 0
 						? Text.translatable("baseinsurance.hud.intact", here.name)
-						: Text.translatable("baseinsurance.hud.damage", here.name, count);
+						: Text.translatable(count == 1 ? "baseinsurance.hud.damage_one" : "baseinsurance.hud.damage", here.name, count);
 				drawCorner(context, font, status, y, count == 0 ? 0xFF55FF55 : 0xFFFF5555, right);
 				y += 11;
 			}

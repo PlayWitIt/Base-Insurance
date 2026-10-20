@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPlayerBlockBreakEvents;
@@ -95,6 +96,8 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		});
 
 		HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (context, tickCounter) -> Hud.render(context, tickCounter, manager, scanner));
+		// After chat, so markers aren't hidden behind recent messages.
+		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.of(MOD_ID, "damage_locator"), DamageLocator::renderHud);
 		WorldRenderEvents.BEFORE_DEBUG_RENDER.register(context -> Overlay.render(context, manager));
 
 		// Scripted development test (./gradlew runSelfTest); the class isn't shipped in the release jar.
@@ -164,6 +167,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 
 		scanner.tick(client);
 		watcher.tick(client);
+		DamageLocator.tick(client);
 		worldMap.tick(client);
 		if (++saveTimer >= SAVE_INTERVAL) {
 			saveTimer = 0;

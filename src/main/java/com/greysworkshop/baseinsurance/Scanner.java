@@ -392,8 +392,8 @@ public final class Scanner {
 			if (found.contains(entry.getValue()) && base.containers.containsKey(entry.getKey())
 					&& entry.getValue().kind() != Base.Kind.ADDED) destroyedContainers++;
 		}
-		String summary = found.size() + " blocks changed: " + Alerts.summarize(found);
-		if (destroyedContainers > 0) summary += ". " + destroyedContainers + " container(s) destroyed";
+		String summary = Alerts.plural(found.size(), "block") + " changed: " + Alerts.summarize(found);
+		if (destroyedContainers > 0) summary += ". " + Alerts.plural(destroyedContainers, "container") + " destroyed";
 		// If you were at the base a moment ago, these were just found on a part you hadn't looked at yet.
 		boolean away = System.currentTimeMillis() - since > 60_000;
 		base.log(Base.EventType.AWAY_DAMAGE, (away ? "While you were away (since " + Alerts.time(since) + "): " : "Found: ") + summary);
@@ -444,7 +444,7 @@ public final class Scanner {
 			String who = suspects == null || suspects.isEmpty()
 					? "no other players in sight (mobs, explosions, or someone out of view)"
 					: "nearby: " + String.join(", ", suspects);
-			String text = changes.size() + " block(s) changed: " + Alerts.summarize(changes) + " — " + who;
+			String text = Alerts.plural(changes.size(), "block") + " changed: " + Alerts.summarize(changes) + " — " + who;
 			base.log(Base.EventType.LIVE_DAMAGE, text);
 			// Small batches below the threshold are only logged, not announced.
 			if (BIConfig.INSTANCE.liveAlerts && changes.size() >= BIConfig.INSTANCE.liveAlertMinBlocks) {

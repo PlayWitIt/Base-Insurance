@@ -187,7 +187,7 @@ public final class Commands {
 		feedback.accept(Text.literal("⚑ " + name + " is now insured: " + size + " blocks.").formatted(Formatting.GREEN));
 		feedback.accept(Text.literal("The snapshot is taken over the next few seconds. Parts that aren't loaded yet are captured when you get near them.").formatted(Formatting.GRAY));
 		if (seeded > 0) {
-			feedback.accept(Text.literal("Imported contents of " + seeded + " container(s) from Container Peek.").formatted(Formatting.GRAY));
+			feedback.accept(Text.literal("Imported contents of " + Alerts.plural(seeded, "container") + " from Container Peek.").formatted(Formatting.GRAY));
 		}
 		feedback.accept(Text.literal("Open each chest once so its contents are on record. Tip: /bi friend add <name> for people who share the base.").formatted(Formatting.GRAY));
 		return null;
@@ -293,29 +293,13 @@ public final class Commands {
 		Base base = name == null ? current(c) : named(c, name);
 		if (base == null) return 0;
 		int accepted = acceptChanges(base, radius > 0 ? c.getSource().getPlayer().getBlockPos() : null, radius);
-		c.getSource().sendFeedback(Text.literal("Accepted " + accepted + " change(s) into " + base.name + "'s snapshot.").formatted(Formatting.GREEN));
+		c.getSource().sendFeedback(Text.literal("Accepted " + Alerts.plural(accepted, "change") + " into " + base.name + "'s snapshot. Undo it from the report.").formatted(Formatting.GREEN));
 		return 1;
 	}
 
 	/** Makes the current state the new normal, for all changes or those within {@code radius} of {@code center}. */
 	public static int acceptChanges(Base base, BlockPos center, int radius) {
-		int accepted = 0;
-		var it = base.changes.entrySet().iterator();
-		while (it.hasNext()) {
-			var entry = it.next();
-			BlockPos pos = BlockPos.fromLong(entry.getKey());
-			if (center != null && !pos.isWithinDistance(center, radius)) continue;
-			BlockState now = entry.getValue().nowState();
-			if (now != null) base.baseline.set(pos, now);
-			if (entry.getValue().kind() != Base.Kind.ADDED) base.containers.remove(entry.getKey());
-			it.remove();
-			accepted++;
-		}
-		if (accepted > 0) {
-			base.baselineDirty = true;
-			base.log(Base.EventType.ACCEPTED, "Accepted " + accepted + " change(s)" + (center != null ? " within " + radius + " blocks of " + Alerts.pos(center) : ""));
-		}
-		return accepted;
+		return center == null ? BaseActions.acceptAll(base) : BaseActions.acceptNear(base, center, radius);
 	}
 
 	private static int materials(CommandContext<FabricClientCommandSource> c, String name) {

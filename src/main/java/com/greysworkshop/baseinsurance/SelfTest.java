@@ -170,7 +170,7 @@ public final class SelfTest {
 			case 599 -> BIConfig.INSTANCE.overlayFill = true;
 			case 600 -> client.setScreen(new ReportScreen(mod.manager.get("Test")));
 			case 620 -> screenshot(client, "3_report_overview");
-			case 630 -> showTab(client, "BLOCKS");
+			case 630 -> showTab(client, "DAMAGE");
 			case 650 -> screenshot(client, "4_report_blocks");
 			case 660 -> showTab(client, "CONTAINERS");
 			case 680 -> screenshot(client, "5_report_containers");
@@ -297,7 +297,42 @@ public final class SelfTest {
 				Overlay.enabled = true;
 			}
 			case 1365 -> screenshot(client, "10_trust_hud");
-			case 1380 -> {
+			case 1370 -> {
+				ReportScreen report = new ReportScreen(mod.manager.get("Big"));
+				client.setScreen(report);
+				report.showTab("DAMAGE");
+			}
+			case 1380 -> screenshot(client, "11_report_damage");
+			case 1385 -> {
+				if (client.currentScreen instanceof ReportScreen report) report.testAction("Not damage");
+			}
+			case 1390 -> {
+				Base big = mod.manager.get("Big");
+				boolean ignored = BIConfig.INSTANCE.ignoredBlocks.contains("minecraft:grass_block");
+				check("Not damage ignores the block type and clears its changes (ignored=" + ignored + ", " + big.changes.size() + " left)",
+						ignored && big.changes.isEmpty());
+			}
+			case 1392 -> screenshot(client, "11b_report_after_not_damage");
+			case 1395 -> {
+				Base big = mod.manager.get("Big");
+				BaseActions.undo(big);
+				boolean ignored = BIConfig.INSTANCE.ignoredBlocks.contains("minecraft:grass_block");
+				check("Undo restores the change and un-ignores the block (ignored=" + ignored + ", " + big.changes.size() + " changes)",
+						!ignored && big.changes.size() == 1);
+				if (client.currentScreen instanceof ReportScreen report) report.showTab("DAMAGE");
+			}
+			case 1400 -> {
+				if (client.currentScreen instanceof ReportScreen report) report.testAction("Find");
+			}
+			case 1404 -> {
+				check("Find starts the damage locator and closes the report", DamageLocator.active() && client.currentScreen == null);
+				client.getServer().execute(() -> client.getServer().getPlayerManager().getPlayerList().get(0)
+						.requestTeleport(origin.getX() + 38.5, origin.getY(), origin.getZ() - 8.5));
+			}
+			case 1412 -> aimAt(client, origin.add(20, 0, -20));
+			case 1420 -> screenshot(client, "12_damage_locator");
+			case 1430 -> {
+				DamageLocator.stop();
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

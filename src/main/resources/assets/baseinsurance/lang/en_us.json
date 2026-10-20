@@ -170,5 +170,8 @@
 	"baseinsurance.config.smart_terrain.desc": "Some servers send air instead of underground terrain until you're close. With this on, natural stone, dirt, ores and so on appearing where the snapshot had air are treated as the real terrain loading in, a section snapshotted while hidden is re-snapshotted, and far-off terrain turning to air is ignored until you're near. Building blocks, lava and water placed on their own are still reported.",
 	"baseinsurance.config.trust_radius": "Trust radius",
 	"baseinsurance.config.trust_radius.desc": "Only blocks this close to you are snapshotted and checked. Servers often fake blocks further away (anti-xray, anti-freecam), but must send the real ones up close. Walk around your base once so all of it gets seen. Lower it if you still get false alerts; raise it to cover big bases from one spot.",
-	"baseinsurance.hud.snapshot": "⚑ %s: snapshot %s%% · walk around to finish"
+	"baseinsurance.hud.snapshot": "⚑ %s: snapshot %s%% · walk around to finish",
+	"baseinsurance.report.tab.damage": "Damage",
+	"baseinsurance.report.undo": "Undo",
+	"baseinsurance.hud.damage_one": "⚑ %s: 1 block to fix"
 }

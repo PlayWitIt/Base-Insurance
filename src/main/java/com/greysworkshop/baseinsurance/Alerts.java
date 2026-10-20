@@ -58,6 +58,11 @@ public final class Alerts {
 				.withClickEvent(new ClickEvent.RunCommand("/bi report " + base.name)));
 	}
 
+	/** "1 block", "3 blocks". */
+	public static String plural(int count, String word) {
+		return count + " " + word + (count == 1 ? "" : "s");
+	}
+
 	public static String time(long millis) {
 		return TIME.format(Instant.ofEpochMilli(millis));
 	}
