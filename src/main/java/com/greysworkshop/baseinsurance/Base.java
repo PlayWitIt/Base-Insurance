@@ -136,6 +136,8 @@ public final class Base {
 		public boolean live;
 		/** Other players in render distance when a live change was spotted. */
 		public List<String> suspects;
+		/** Mobs and explosives in view when a live change was spotted, e.g. "Creeper (5m)". */
+		public List<String> causes;
 
 		public transient BlockState wasState;
 		public transient BlockState nowState;

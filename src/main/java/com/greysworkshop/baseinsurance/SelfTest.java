@@ -349,6 +349,54 @@ public final class SelfTest {
 				BIConfig.INSTANCE.alertStyle = BIConfig.AlertStyle.CHAT;
 			}
 			case 1700 -> {
+				log("Hopper test: a chest with a hopper underneath");
+				BIConfig.INSTANCE.liveAlertCooldownSeconds = 2;
+				client.getServer().execute(() -> client.getServer().getPlayerManager().getPlayerList().get(0)
+						.requestTeleport(origin.getX() + 0.5, origin.getY(), origin.getZ() + 0.5));
+				server(client, w -> {
+					BlockPos chest2 = origin.add(-2, 0, 3);
+					w.setBlockState(chest2.down(), Blocks.HOPPER.getDefaultState());
+					w.setBlockState(chest2, Blocks.CHEST.getDefaultState());
+					if (w.getBlockEntity(chest2) instanceof ChestBlockEntity be) be.setStack(0, new ItemStack(Items.DIAMOND, 10));
+				});
+			}
+			case 1730 -> client.player.networkHandler.sendChatCommand("bi accept Test");
+			case 1735 -> openChestAt(client, origin.add(-2, 0, 3));
+			case 1755 -> client.player.closeHandledScreen();
+			case 1758 -> check("container is recorded in the smallest base containing it (Test)",
+					mod.manager.get("Test").containers.containsKey(origin.add(-2, 0, 3).asLong()));
+			case 1760 -> server(client, w -> {
+				if (w.getBlockEntity(origin.add(-2, 0, 3)) instanceof ChestBlockEntity be) {
+					be.getStack(0).decrement(5);
+					be.markDirty();
+				}
+			});
+			case 1780 -> openChestAt(client, origin.add(-2, 0, 3));
+			case 1800 -> {
+				client.player.closeHandledScreen();
+				String last = mod.manager.get("Test").events.stream().filter(e -> e.type == Base.EventType.CONTAINER)
+						.reduce((a, b) -> b).map(e -> e.text).orElse("");
+				check("missing items next to a hopper are noted, not alerted (" + last + ")",
+						last.contains("hopper is attached"));
+				log("Explosive test: primed TNT nearby when a block breaks");
+				server(client, w -> {
+					var tnt = new net.minecraft.entity.TntEntity(w, origin.getX() + 3.5, origin.getY(), origin.getZ() - 3.5, null);
+					tnt.setFuse(2000);
+					w.spawnEntity(tnt);
+				});
+			}
+			case 1830 -> server(client, w -> w.setBlockState(origin.add(-5, -1, -6), Blocks.AIR.getDefaultState()));
+			case 1890 -> {
+				var events = mod.manager.get("Test").events;
+				String last = events.stream().filter(e -> e.type == Base.EventType.LIVE_DAMAGE).reduce((a, b) -> b).map(e -> e.text).orElse("");
+				check("live alert names the explosive nearby (" + last + ")", last.contains("Primed TNT"));
+				long bigLive = mod.manager.get("Big").events.stream().filter(e -> e.type == Base.EventType.LIVE_DAMAGE
+						&& e.time > System.currentTimeMillis() - 5000).count();
+				check("overlapping bases don't repeat the alert (Big logged " + bigLive + " in the last 5s)", bigLive == 0);
+				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.TNT, e -> true).forEach(net.minecraft.entity.Entity::discard));
+				BIConfig.INSTANCE.liveAlertCooldownSeconds = 10;
+			}
+			case 1900 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");
@@ -377,6 +425,11 @@ public final class SelfTest {
 
 	private static void showSettingsTab(MinecraftClient client, int tab) {
 		if (client.currentScreen instanceof OptionsScreen options) options.showTab(tab);
+	}
+
+	private static void openChestAt(MinecraftClient client, BlockPos pos) {
+		BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos).add(0, 0.5, 0), Direction.UP, pos, false);
+		client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, hit);
 	}
 
 	private static void openChest(MinecraftClient client) {

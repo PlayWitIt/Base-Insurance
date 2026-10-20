@@ -52,6 +52,15 @@ public final class BaseManager {
 		return result;
 	}
 
+	/** The smallest base in this dimension containing the position: the one that "owns" it. */
+	public Base owner(String dimension, net.minecraft.util.math.BlockPos pos) {
+		Base best = null;
+		for (Base base : bases) {
+			if (base.dimension.equals(dimension) && base.contains(pos) && (best == null || base.volume() < best.volume())) best = base;
+		}
+		return best;
+	}
+
 	public Base get(String name) {
 		for (Base base : bases) {
 			if (base.name.equalsIgnoreCase(name)) return base;

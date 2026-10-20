@@ -71,16 +71,13 @@ public final class ContainerWatcher {
 
 	public void onUseBlock(ClientWorld world, BlockPos clicked) {
 		if (!BIConfig.INSTANCE.trackContainers || !isStorage(world.getBlockEntity(clicked))) return;
-		String dimension = BaseManager.dimensionKey(world);
-		for (Base candidate : manager.inDimension(dimension)) {
-			if (candidate.contains(clicked)) {
-				pendingBase = candidate;
-				pendingPos = canonical(world, clicked);
-				pendingBlock = Registries.BLOCK.getId(world.getBlockState(clicked).getBlock()).toString();
-				pendingTicks = PENDING_TICKS;
-				return;
-			}
-		}
+		// With bases inside bases, the smallest one owns the container.
+		Base owner = manager.owner(BaseManager.dimensionKey(world), clicked);
+		if (owner == null) return;
+		pendingBase = owner;
+		pendingPos = canonical(world, clicked);
+		pendingBlock = Registries.BLOCK.getId(world.getBlockState(clicked).getBlock()).toString();
+		pendingTicks = PENDING_TICKS;
 	}
 
 	public void onScreenOpened(Screen opened) {
@@ -123,8 +120,11 @@ public final class ContainerWatcher {
 		String text = what + " is missing " + Alerts.topCounts(missing, 6)
 				+ " (last checked " + Alerts.time(approved.updated) + ")";
 		if (!extra.isEmpty()) text += "; new items: " + Alerts.topCounts(extra, 3);
+		// A hopper next to it can move items on its own, so that's only noted, not alerted.
+		boolean hopper = hasHopper(MinecraftClient.getInstance().world, pos);
+		if (hopper) text += " (a hopper is attached, so items may have moved on their own)";
 		base.log(Base.EventType.CONTAINER, text);
-		if (BIConfig.INSTANCE.theftAlerts) Alerts.alert(Text.literal("⚠ " + text).formatted(Formatting.RED), true);
+		if (BIConfig.INSTANCE.theftAlerts && !hopper) Alerts.alert(Text.literal("⚠ " + text).formatted(Formatting.RED), true);
 	}
 
 	private void onClose() {
@@ -139,6 +139,22 @@ public final class ContainerWatcher {
 		}
 		screen = null;
 		base = null;
+	}
+
+	/** True if a hopper touches the container (or the other half of a double chest). */
+	private static boolean hasHopper(ClientWorld world, BlockPos pos) {
+		if (world == null) return false;
+		List<BlockPos> blocks = new ArrayList<>(List.of(pos));
+		BlockState state = world.getBlockState(pos);
+		if (state.getBlock() instanceof ChestBlock && ChestBlock.getDoubleBlockType(state) != DoubleBlockProperties.Type.SINGLE) {
+			blocks.add(pos.offset(ChestBlock.getFacing(state)));
+		}
+		for (BlockPos block : blocks) {
+			for (net.minecraft.util.math.Direction direction : net.minecraft.util.math.Direction.values()) {
+				if (world.getBlockState(block.offset(direction)).isOf(net.minecraft.block.Blocks.HOPPER)) return true;
+			}
+		}
+		return false;
 	}
 
 	/** Totals of the container's own slots, leaving out the player's inventory. */

@@ -3,7 +3,17 @@ package com.greysworkshop.baseinsurance;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.TntEntity;
+import net.minecraft.entity.boss.WitherEntity;
+import net.minecraft.entity.decoration.EndCrystalEntity;
+import net.minecraft.entity.mob.CreeperEntity;
+import net.minecraft.entity.mob.EndermanEntity;
+import net.minecraft.entity.mob.GhastEntity;
+import net.minecraft.entity.mob.RavagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.projectile.FireballEntity;
+import net.minecraft.entity.projectile.WitherSkullEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
@@ -86,6 +96,7 @@ public final class Scanner {
 	public void tick(MinecraftClient client) {
 		tick++;
 		suspectsThisTick = null;
+		causesThisTick = null;
 		if (tick % 20 == 0) selfEdits.values().removeIf(expiry -> expiry < tick);
 
 		ClientWorld world = client.world;
@@ -245,10 +256,13 @@ public final class Scanner {
 					change.nowState = current;
 					change.firstSeen = now;
 					change.live = wasLoaded;
+					// Where bases overlap, only the smallest one announces it; the others just record it.
+					boolean announce = manager.owner(base.dimension, pos) == base;
 					if (wasLoaded) {
 						change.suspects = suspects(client);
-						pendingLive.computeIfAbsent(base, b -> new ArrayList<>()).add(change);
-					} else {
+						change.causes = causes(client);
+						if (announce) pendingLive.computeIfAbsent(base, b -> new ArrayList<>()).add(change);
+					} else if (announce) {
 						base.arrivalChanges++;
 					}
 					base.changes.put(posKey, change);
@@ -440,10 +454,16 @@ public final class Scanner {
 			it.remove();
 			lastLiveAlert.put(base, now);
 
-			List<String> suspects = changes.get(changes.size() - 1).suspects;
-			String who = suspects == null || suspects.isEmpty()
-					? "no other players in sight (mobs, explosions, or someone out of view)"
-					: "nearby: " + String.join(", ", suspects);
+			Base.Change last = changes.get(changes.size() - 1);
+			List<String> suspects = last.suspects, causes = last.causes;
+			String who;
+			if (suspects != null && !suspects.isEmpty()) {
+				who = "nearby: " + String.join(", ", suspects);
+			} else if (causes != null && !causes.isEmpty()) {
+				who = "no players in sight; nearby: " + String.join(", ", causes);
+			} else {
+				who = "no players or mobs in sight (someone out of view, or something you did)";
+			}
 			String text = Alerts.plural(changes.size(), "block") + " changed: " + Alerts.summarize(changes) + " — " + who;
 			base.log(Base.EventType.LIVE_DAMAGE, text);
 			// Small batches below the threshold are only logged, not announced.
@@ -453,6 +473,28 @@ public final class Scanner {
 						.append(Text.literal(text).formatted(Formatting.YELLOW)), true);
 			}
 		}
+	}
+
+	/** Mobs and explosives that break or move blocks. */
+	private static boolean isCause(Entity entity) {
+		return entity instanceof CreeperEntity || entity instanceof EndermanEntity || entity instanceof WitherEntity
+				|| entity instanceof GhastEntity || entity instanceof RavagerEntity || entity instanceof TntEntity
+				|| entity instanceof EndCrystalEntity || entity instanceof WitherSkullEntity || entity instanceof FireballEntity;
+	}
+
+	private List<String> causesThisTick;
+
+	/** Block-breaking mobs and explosives within 48 blocks, nearest first, e.g. "Creeper (5m)". */
+	private List<String> causes(MinecraftClient client) {
+		if (causesThisTick != null) return causesThisTick;
+		List<Entity> found = client.world.getOtherEntities(client.player, client.player.getBoundingBox().expand(48), Scanner::isCause);
+		found.sort((a, b) -> Double.compare(a.squaredDistanceTo(client.player), b.squaredDistanceTo(client.player)));
+		List<String> result = new ArrayList<>();
+		for (Entity entity : found.subList(0, Math.min(4, found.size()))) {
+			result.add(entity.getName().getString() + " (" + (int) entity.distanceTo(client.player) + "m)");
+		}
+		causesThisTick = result;
+		return result;
 	}
 
 	/** Other players in render distance, nearest first, e.g. "Steve (12m)". Friends are left out. */
