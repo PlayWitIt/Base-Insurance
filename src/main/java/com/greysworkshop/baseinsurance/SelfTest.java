@@ -396,7 +396,32 @@ public final class SelfTest {
 				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.TNT, e -> true).forEach(net.minecraft.entity.Entity::discard));
 				BIConfig.INSTANCE.liveAlertCooldownSeconds = 10;
 			}
-			case 1900 -> {
+			case 1900 -> client.player.networkHandler.sendChatCommand("bi create Legacy 5 2 2");
+			case 1930 -> {
+				log("Simulating an old (v1) snapshot with a stale change, then reloading");
+				Base legacy = mod.manager.get("Legacy");
+				Base.Change fake = new Base.Change();
+				fake.was = "minecraft:stone";
+				fake.now = "minecraft:air";
+				fake.firstSeen = System.currentTimeMillis();
+				legacy.changes.put(origin.add(1, -1, 1).asLong(), fake);
+				legacy.dirty = true;
+				mod.manager.saveAll(true);
+				String world = mod.manager.worldKey();
+				java.nio.file.Path file = BIConfig.dir().resolve(world.replaceAll("[^A-Za-z0-9._-]", "_")).resolve("Legacy.snapshot.gz");
+				try {
+					writeV1(legacy.baseline, file);
+				} catch (java.io.IOException e) {
+					log("FAIL could not write v1 snapshot: " + e);
+				}
+				mod.manager.switchTo(null);
+				mod.manager.switchTo(world);
+				Base reloaded = mod.manager.get("Legacy");
+				String last = reloaded.events.get(reloaded.events.size() - 1).text;
+				check("old snapshots load untrusted and their stale changes are cleared (" + reloaded.changes.size() + " left; "
+						+ last + ")", reloaded.changes.isEmpty() && last.startsWith("Upgraded") && reloaded.snapshotPercent() == 0);
+			}
+			case 1950 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");
@@ -418,6 +443,22 @@ public final class SelfTest {
 	}
 
 	private static int liveEventsBefore;
+
+	/** Writes a snapshot in the pre-1.4.0 format (no trusted bits), to test upgrading. */
+	private static void writeV1(Baseline baseline, java.nio.file.Path file) throws java.io.IOException {
+		try (var out = new java.io.DataOutputStream(new java.util.zip.GZIPOutputStream(java.nio.file.Files.newOutputStream(file)))) {
+			out.writeInt(1);
+			out.writeInt(baseline.sections.size());
+			for (var entry : baseline.sections.entrySet()) {
+				Baseline.Section section = entry.getValue();
+				out.writeLong(entry.getKey());
+				out.writeShort(section.palette.size());
+				for (var state : section.palette) out.writeUTF(state == null ? "minecraft:air" : BlockStates.toString(state));
+				out.writeBoolean(section.data != null);
+				if (section.data != null) for (short v : section.data) out.writeShort(v);
+			}
+		}
+	}
 
 	private static int countEvents(BaseInsuranceClient mod, Base.EventType type) {
 		return (int) mod.manager.get("Test").events.stream().filter(e -> e.type == type).count();

@@ -65,6 +65,8 @@ public final class Baseline {
 	}
 
 	public final Map<Long, Section> sections = new HashMap<>();
+	/** The file version this was read from (the current version if new). */
+	public int loadedVersion = VERSION;
 
 	public static int index(int x, int y, int z) {
 		return (y & 15) << 8 | (z & 15) << 4 | (x & 15);
@@ -141,6 +143,7 @@ public final class Baseline {
 		try (DataInputStream in = new DataInputStream(new GZIPInputStream(Files.newInputStream(file)))) {
 			int version = in.readInt();
 			if (version < 1 || version > VERSION) throw new IOException("Unknown snapshot version " + version);
+			baseline.loadedVersion = version;
 			int count = in.readInt();
 			for (int i = 0; i < count; i++) {
 				long key = in.readLong();

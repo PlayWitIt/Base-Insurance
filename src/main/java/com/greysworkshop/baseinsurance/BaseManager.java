@@ -84,6 +84,15 @@ public final class BaseManager {
 					if (base == null || base.name == null) continue;
 					fixNulls(base);
 					base.baseline = Baseline.read(snapshotFile(base.name));
+					if (base.baseline.loadedVersion < 2 && !base.changes.isEmpty()) {
+						// Changes from before 1.4.0 were worked out against blocks seen from far away, which servers
+						// often fake. Start the list afresh; the snapshot heals as you walk around.
+						int cleared = base.changes.size();
+						base.changes.clear();
+						base.log(Base.EventType.ACCEPTED, "Upgraded to trusted snapshots: cleared " + Alerts.plural(cleared, "old change")
+								+ " that came from blocks seen from far away");
+						base.baselineDirty = true;
+					}
 					bases.add(base);
 				} catch (IOException | RuntimeException e) {
 					BaseInsuranceClient.LOGGER.error("Could not load base {}", file, e);
