@@ -3,14 +3,12 @@
 	"key.baseinsurance.report": "Open damage report",
 	"key.baseinsurance.overlay": "Toggle damage overlay",
 	"key.baseinsurance.build": "Toggle build mode",
-
 	"baseinsurance.hud.build_mode": "⚒ BUILD MODE: changes go into the snapshot",
 	"baseinsurance.hud.intact": "⚑ %s: intact",
 	"baseinsurance.hud.damage": "⚑ %s: %s blocks to fix",
 	"baseinsurance.hud.missing": "Missing: %s",
 	"baseinsurance.hud.added": "Placed by someone else: %s",
 	"baseinsurance.hud.replaced": "Should be %s (now %s)",
-
 	"baseinsurance.report.title": "Base Insurance: %s",
 	"baseinsurance.report.tab.overview": "Overview",
 	"baseinsurance.report.tab.blocks": "Blocks",
@@ -21,7 +19,6 @@
 	"baseinsurance.report.accept": "Accept all...",
 	"baseinsurance.report.accept.title": "Accept all changes?",
 	"baseinsurance.report.accept.message": "The %s changed blocks in %s become the new normal and stop showing as damage. Do this if the changes were yours.",
-
 	"baseinsurance.config.title": "Base Insurance Settings",
 	"baseinsurance.config.enabled": "Mod enabled",
 	"baseinsurance.config.sounds": "Alert sounds",
@@ -31,5 +28,24 @@
 	"baseinsurance.config.auto_overlay": "Auto overlay on damage",
 	"baseinsurance.config.overlay_fill": "Filled overlay boxes",
 	"baseinsurance.config.overlay_range": "Overlay range",
-	"baseinsurance.config.player_distance": "Player alert distance"
+	"baseinsurance.config.player_distance": "Player alert distance",
+	"key.baseinsurance.map": "Open map",
+	"baseinsurance.map.title": "Explored map",
+	"baseinsurance.map.create_title": "New base",
+	"baseinsurance.map.center": "Center on me",
+	"baseinsurance.map.new_base": "New base...",
+	"baseinsurance.map.name": "Name",
+	"baseinsurance.map.down": "Down from you: %s",
+	"baseinsurance.map.up": "Up from you: %s",
+	"baseinsurance.map.confirm": "Insure this area",
+	"baseinsurance.map.area": "Area: %s × %s blocks",
+	"baseinsurance.map.height": "Height: Y %s to %s (%s)",
+	"baseinsurance.map.volume": "Snapshot size: %s blocks",
+	"baseinsurance.map.loaded": "Loaded right now: %s%%",
+	"baseinsurance.map.loaded_all": "The whole area is loaded, so it's all captured straight away.",
+	"baseinsurance.map.loaded_some": "Parts that aren't loaded are captured the first time you get near them.",
+	"baseinsurance.map.help": "Drag to move · Scroll to zoom · Click a base for its report",
+	"baseinsurance.map.help_create": "Drag the edges or corners to resize · Drag the middle to move · Scroll to zoom",
+	"baseinsurance.map.tip_intact": "%s: intact (click for report)",
+	"baseinsurance.map.tip_damage": "%s: %s changed blocks (click for report)"
 }

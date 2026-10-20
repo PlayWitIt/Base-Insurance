@@ -75,6 +75,16 @@ public final class SelfTest {
 				log("In world at " + Alerts.pos(origin) + "; creating base");
 				client.player.networkHandler.sendChatCommand("bi delete Test confirm");
 				client.player.networkHandler.sendChatCommand("bi create Test 10 3 6");
+				client.player.networkHandler.sendChatCommand("bi create");
+			}
+			case 106 -> check("plain /bi create opens the map", client.currentScreen instanceof MapScreen);
+			case 112 -> screenshot(client, "0_create_on_map");
+			case 114 -> {
+				if (client.currentScreen instanceof MapScreen map) map.confirm();
+			}
+			case 120 -> {
+				check("Insure this area creates a base called Home", mod.manager.get("Home") != null);
+				client.player.networkHandler.sendChatCommand("bi delete Home confirm");
 			}
 			case 180 -> {
 				Base base = mod.manager.get("Test");
@@ -168,7 +178,9 @@ public final class SelfTest {
 			case 710 -> screenshot(client, "6_report_rebuild");
 			case 720 -> showTab(client, "TIMELINE");
 			case 740 -> screenshot(client, "7_report_timeline");
-			case 760 -> {
+			case 750 -> client.setScreen(new MapScreen());
+			case 770 -> screenshot(client, "8_map");
+			case 790 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

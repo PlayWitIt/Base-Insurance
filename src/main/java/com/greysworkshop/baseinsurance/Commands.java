@@ -52,9 +52,14 @@ public final class Commands {
 		dispatcher.register(literal("bi")
 				.executes(Commands::help)
 				.then(literal("help").executes(Commands::help))
+				.then(literal("map").executes(c -> {
+					mod().openLater(new MapScreen());
+					return 1;
+				}))
 				.then(literal("create")
+						.executes(c -> createOnMap(c, null))
 						.then(argument("name", word())
-								.executes(c -> create(c, DEFAULT_RADIUS, DEFAULT_DOWN, DEFAULT_UP))
+								.executes(c -> createOnMap(c, getString(c, "name")))
 								.then(argument("radius", integer(2, 256))
 										.executes(c -> create(c, getInteger(c, "radius"), DEFAULT_DOWN, DEFAULT_UP))
 										.then(argument("down", integer(0, 384))
@@ -94,7 +99,9 @@ public final class Commands {
 		FabricClientCommandSource s = c.getSource();
 		s.sendFeedback(Text.literal("Base Insurance commands (client-side, never sent to the server):").formatted(Formatting.GOLD));
 		String[][] lines = {
-				{"/bi create <name> [radius] [down] [up]", "protect the area around you (default 48 wide, 24 down, 48 up)"},
+				{"/bi create [name]", "pick an area to protect on the map"},
+				{"/bi create <name> <radius> [down] [up]", "protect the area around you right away"},
+				{"/bi map", "your explored world, bases and damage (or press M)"},
 				{"/bi report [name]", "open the damage report"},
 				{"/bi overlay", "show/hide changed blocks in the world"},
 				{"/bi build", "build mode: your big changes (TNT, pistons, water) go straight into the snapshot"},
@@ -112,51 +119,78 @@ public final class Commands {
 	}
 
 	private static int create(CommandContext<FabricClientCommandSource> c, int radius, int down, int up) {
+		return create(c, getString(c, "name"), radius, down, up);
+	}
+
+	/** With no name given, uses "Home", or "Home2", "Home3"... if that's taken. */
+	private static int create(CommandContext<FabricClientCommandSource> c, String name, int radius, int down, int up) {
 		FabricClientCommandSource s = c.getSource();
-		String name = getString(c, "name");
-		if (!BaseManager.isValidName(name)) {
-			s.sendError(Text.literal("Names can use letters, numbers, - and _ (up to 32)."));
-			return 0;
-		}
-		BaseManager manager = mod().manager;
-		if (manager.worldKey() == null) {
-			s.sendError(Text.literal("Join a world or server first."));
-			return 0;
-		}
-		if (manager.get(name) != null) {
-			s.sendError(Text.literal("You already have a base called " + name + "."));
-			return 0;
-		}
-		ClientWorld world = s.getWorld();
+		if (name == null) name = defaultName();
 		BlockPos center = s.getPlayer().getBlockPos();
+		String error = createBase(name, s.getWorld(), center, center.getX() - radius, center.getX() + radius,
+				center.getZ() - radius, center.getZ() + radius, center.getY() - down, center.getY() + up, s::sendFeedback);
+		if (error != null) {
+			s.sendError(Text.literal(error));
+			return 0;
+		}
+		return 1;
+	}
+
+	/** Opens the map so you can draw the base's area; used by /bi create without a size. */
+	private static int createOnMap(CommandContext<FabricClientCommandSource> c, String name) {
+		if (mod().manager.worldKey() == null) {
+			c.getSource().sendError(Text.literal("Join a world or server first."));
+			return 0;
+		}
+		mod().openLater(MapScreen.forCreate(name == null ? defaultName() : name));
+		return 1;
+	}
+
+	/** "Home", or "Home2", "Home3"... if that's taken. */
+	public static String defaultName() {
+		String name = "Home";
+		for (int i = 2; mod().manager.get(name) != null; i++) name = "Home" + i;
+		return name;
+	}
+
+	/** Checks a proposed base; returns why it can't be created, or null if it's fine. */
+	public static String validate(String name, long volume) {
+		if (!BaseManager.isValidName(name)) return "Names can use letters, numbers, - and _ (up to 32).";
+		if (mod().manager.worldKey() == null) return "Join a world or server first.";
+		if (mod().manager.get(name) != null) return "You already have a base called " + name + ".";
+		if (volume > MAX_VOLUME) return "That's " + volume / 1_000_000 + " million blocks; the limit is 16 million. Make it smaller or less tall.";
+		return null;
+	}
+
+	/** Creates and starts snapshotting a base. Returns an error message, or null on success. */
+	public static String createBase(String name, ClientWorld world, BlockPos center, int minX, int maxX, int minZ, int maxZ,
+			int minY, int maxY, java.util.function.Consumer<Text> feedback) {
 		Base base = new Base();
 		base.name = name;
 		base.dimension = BaseManager.dimensionKey(world);
-		base.minX = center.getX() - radius;
-		base.maxX = center.getX() + radius;
-		base.minZ = center.getZ() - radius;
-		base.maxZ = center.getZ() + radius;
-		base.minY = Math.max(world.getBottomY(), center.getY() - down);
-		base.maxY = Math.min(world.getTopYInclusive(), center.getY() + up);
-		if (base.volume() > MAX_VOLUME) {
-			s.sendError(Text.literal("That's " + base.volume() / 1_000_000 + " million blocks; the limit is 16 million. Try a smaller radius or height."));
-			return 0;
-		}
+		base.minX = Math.min(minX, maxX);
+		base.maxX = Math.max(minX, maxX);
+		base.minZ = Math.min(minZ, maxZ);
+		base.maxZ = Math.max(minZ, maxZ);
+		base.minY = Math.max(world.getBottomY(), Math.min(minY, maxY));
+		base.maxY = Math.min(world.getTopYInclusive(), Math.max(minY, maxY));
+		String error = validate(name, base.volume());
+		if (error != null) return error;
 		base.created = base.lastSeen = System.currentTimeMillis();
 
+		BaseManager manager = mod().manager;
 		int seeded = seedContainers(base, manager.worldKey(), world);
-		base.log(Base.EventType.CREATED, "Base created around " + Alerts.pos(center) + " ("
-				+ (base.maxX - base.minX + 1) + "×" + (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + ")");
+		String size = (base.maxX - base.minX + 1) + "×" + (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1);
+		base.log(Base.EventType.CREATED, "Base created around " + Alerts.pos(center) + " (" + size + ")");
 		manager.add(base);
 
-		s.sendFeedback(Text.literal("⚑ " + name + " is now insured: " + (base.maxX - base.minX + 1) + "×"
-				+ (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + " blocks around you.").formatted(Formatting.GREEN));
-		s.sendFeedback(Text.literal("The snapshot is taken over the next few seconds. Parts that aren't loaded yet are captured when you get near them.").formatted(Formatting.GRAY));
+		feedback.accept(Text.literal("⚑ " + name + " is now insured: " + size + " blocks.").formatted(Formatting.GREEN));
+		feedback.accept(Text.literal("The snapshot is taken over the next few seconds. Parts that aren't loaded yet are captured when you get near them.").formatted(Formatting.GRAY));
 		if (seeded > 0) {
-			s.sendFeedback(Text.literal("Imported contents of " + seeded + " container(s) from Container Peek.").formatted(Formatting.GRAY));
+			feedback.accept(Text.literal("Imported contents of " + seeded + " container(s) from Container Peek.").formatted(Formatting.GRAY));
 		}
-		s.sendFeedback(Text.literal("Open each chest once so its contents are on record. Tip: /bi friend add <name> for people who share the base.").formatted(Formatting.GRAY));
-		return 1;
+		feedback.accept(Text.literal("Open each chest once so its contents are on record. Tip: /bi friend add <name> for people who share the base.").formatted(Formatting.GRAY));
+		return null;
 	}
 
 	/** Starts container records from what Container Peek already knows about storage in this area. */

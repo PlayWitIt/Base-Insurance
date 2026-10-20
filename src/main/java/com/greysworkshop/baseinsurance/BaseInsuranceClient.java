@@ -2,6 +2,7 @@ package com.greysworkshop.baseinsurance;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -37,10 +38,12 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	public final BaseManager manager = new BaseManager();
 	public final Scanner scanner = new Scanner(manager);
 	public final ContainerWatcher watcher = new ContainerWatcher(manager);
+	public final WorldMap worldMap = new WorldMap();
 
 	private KeyBinding reportKey;
 	private KeyBinding overlayKey;
 	private KeyBinding buildKey;
+	private KeyBinding mapKey;
 	private Screen pendingScreen;
 	private int saveTimer;
 
@@ -53,6 +56,9 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		reportKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.report", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		overlayKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.overlay", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		buildKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.build", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
+		mapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.map", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_M, category));
+
+		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> worldMap.onChunkLoad(chunk.getPos()));
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> Commands.register(dispatcher));
 
@@ -73,12 +79,17 @@ public class BaseInsuranceClient implements ClientModInitializer {
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
 
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+		// Disconnect fires on the network thread; do the work on the game thread.
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
 			manager.saveAll(true);
 			scanner.reset();
 			manager.switchTo(null);
+			worldMap.close();
+		}));
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			manager.saveAll(true);
+			worldMap.save();
 		});
-		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> manager.saveAll(true));
 
 		HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (context, tickCounter) -> Hud.render(context, tickCounter, manager, scanner));
 		WorldRenderEvents.BEFORE_DEBUG_RENDER.register(context -> Overlay.render(context, manager));
@@ -136,6 +147,9 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			Overlay.enabled = !Overlay.enabled;
 			if (client.player != null) client.player.sendMessage(Text.literal("Damage overlay " + (Overlay.enabled ? "ON" : "OFF")), true);
 		}
+		while (mapKey.wasPressed()) {
+			if (client.world != null) client.setScreen(new MapScreen());
+		}
 		while (buildKey.wasPressed()) {
 			scanner.buildMode = !scanner.buildMode;
 			if (client.player != null) client.player.sendMessage(Text.literal("Build mode " + (scanner.buildMode ? "ON" : "OFF")), true);
@@ -147,6 +161,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 
 		scanner.tick(client);
 		watcher.tick(client);
+		worldMap.tick(client);
 		if (++saveTimer >= SAVE_INTERVAL) {
 			saveTimer = 0;
 			manager.saveAll(true);
