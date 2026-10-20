@@ -30,6 +30,16 @@ public final class Overlay {
 
 	private Overlay() {}
 
+	/** Whether this kind of change is shown, per the settings. */
+	public static boolean shown(Base.Kind kind) {
+		BIConfig config = BIConfig.INSTANCE;
+		return switch (kind) {
+			case REMOVED -> config.showRemoved;
+			case ADDED -> config.showAdded;
+			case REPLACED -> config.showReplaced;
+		};
+	}
+
 	public static int color(Base.Kind kind) {
 		return switch (kind) {
 			case REMOVED -> REMOVED;
@@ -53,7 +63,9 @@ public final class Overlay {
 				double x = BlockPos.unpackLongX(key), y = BlockPos.unpackLongY(key), z = BlockPos.unpackLongZ(key);
 				double dx = x + 0.5 - camera.x, dy = y + 0.5 - camera.y, dz = z + 0.5 - camera.z;
 				if (dx * dx + dy * dy + dz * dz > rangeSq) continue;
-				boxes.add(new Box(x - camera.x, y - camera.y, z - camera.z, color(entry.getValue().kind())));
+				Base.Kind kind = entry.getValue().kind();
+				if (!shown(kind)) continue;
+				boxes.add(new Box(x - camera.x, y - camera.y, z - camera.z, color(kind)));
 				if (boxes.size() >= MAX_BOXES) break;
 			}
 		}
@@ -62,14 +74,15 @@ public final class Overlay {
 		MatrixStack matrices = context.matrices();
 		VertexConsumer lines = context.consumers().getBuffer(RenderLayers.lines());
 		for (Box box : boxes) {
-			VertexRendering.drawOutline(matrices, lines, SHAPE, box.x, box.y, box.z, 0xFF000000 | box.rgb, 2.0f);
+			VertexRendering.drawOutline(matrices, lines, SHAPE, box.x, box.y, box.z, 0xFF000000 | box.rgb, BIConfig.INSTANCE.outlineWidth);
 		}
 
 		if (!BIConfig.INSTANCE.overlayFill) return;
 		VertexConsumer quads = context.consumers().getBuffer(RenderLayers.debugQuads());
 		MatrixStack.Entry entry = matrices.peek();
+		int alpha = Math.round(BIConfig.INSTANCE.overlayOpacity * 2.55f) << 24;
 		for (Box box : boxes) {
-			fillCube(quads, entry, (float) box.x, (float) box.y, (float) box.z, 0x50000000 | box.rgb);
+			fillCube(quads, entry, (float) box.x, (float) box.y, (float) box.z, alpha | box.rgb);
 		}
 	}
 

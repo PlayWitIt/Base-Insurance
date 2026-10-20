@@ -30,13 +30,24 @@ public final class Alerts {
 				.append(message));
 	}
 
+	/** An alert, shown where the settings say (chat, action bar or both), with a sound if enabled. */
+	public static void alert(Text message, boolean urgent) {
+		BIConfig config = BIConfig.INSTANCE;
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (config.alertStyle != BIConfig.AlertStyle.ACTION_BAR) chat(message);
+		if (config.alertStyle != BIConfig.AlertStyle.CHAT) client.inGameHud.setOverlayMessage(message, false);
+		sound(urgent);
+	}
+
 	public static void sound(boolean urgent) {
-		if (!BIConfig.INSTANCE.sounds) return;
+		BIConfig config = BIConfig.INSTANCE;
+		if (!config.sounds || config.soundVolume <= 0) return;
+		float volume = config.soundVolume / 100f;
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (urgent) {
-			client.getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.BLOCK_NOTE_BLOCK_PLING, 0.6f));
+			client.getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(), 0.6f, volume));
 		} else {
-			client.getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.BLOCK_NOTE_BLOCK_BELL, 1.2f));
+			client.getSoundManager().play(PositionedSoundInstance.ui(SoundEvents.BLOCK_NOTE_BLOCK_BELL.value(), 1.2f, volume));
 		}
 	}
 

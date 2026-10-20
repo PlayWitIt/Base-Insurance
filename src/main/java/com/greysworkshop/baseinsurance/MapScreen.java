@@ -383,7 +383,7 @@ public class MapScreen extends Screen {
 
 	/** Chunk lines when zoomed in far enough to be useful. */
 	private void drawGrid(DrawContext context, int right) {
-		if (zoom < 3) return;
+		if (zoom < 3 || !BIConfig.INSTANCE.mapGrid) return;
 		int x0 = (int) Math.floor(worldX(0)) >> 4, x1 = (int) Math.floor(worldX(right)) >> 4;
 		int z0 = (int) Math.floor(worldZ(0)) >> 4, z1 = (int) Math.floor(worldZ(height)) >> 4;
 		for (int cx = x0; cx <= x1 + 1; cx++) {
@@ -411,7 +411,7 @@ public class MapScreen extends Screen {
 		context.drawTextWithShadow(textRenderer, label, lx, ly, color);
 
 		// Damage as dots, when zoomed in enough to tell them apart.
-		if (damaged && zoom >= 1) {
+		if (damaged && zoom >= 1 && BIConfig.INSTANCE.mapDamageDots) {
 			int shown = 0;
 			for (var entry : base.changes.entrySet()) {
 				long key = entry.getKey();

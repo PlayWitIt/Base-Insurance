@@ -31,7 +31,6 @@ import java.util.Set;
  */
 public final class WorldMap {
 	public static final int TILE = 512;
-	private static final int CHUNKS_PER_TICK = 6;
 	private static final int MAX_LOADED_TILES = 64;
 	private static final int SAVE_INTERVAL = 600;
 	private static final int RESCAN_INTERVAL = 100;
@@ -93,7 +92,12 @@ public final class WorldMap {
 				for (int dz = -1; dz <= 1; dz++) onChunkLoad(new ChunkPos(center.x + dx, center.z + dz));
 			}
 		}
-		for (int i = 0; i < CHUNKS_PER_TICK && !queue.isEmpty(); i++) {
+		if (!BIConfig.INSTANCE.recordMap) {
+			queue.clear();
+			queued.clear();
+			return;
+		}
+		for (int i = 0; i < BIConfig.INSTANCE.mapSpeed && !queue.isEmpty(); i++) {
 			long chunk = queue.poll();
 			queued.remove(chunk);
 			int cx = ChunkPos.getPackedX(chunk), cz = ChunkPos.getPackedZ(chunk);

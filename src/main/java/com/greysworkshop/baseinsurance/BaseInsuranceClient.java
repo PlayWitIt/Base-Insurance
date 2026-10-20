@@ -58,7 +58,10 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		buildKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.build", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		mapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.map", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_M, category));
 
-		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> worldMap.onChunkLoad(chunk.getPos()));
+		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
+			worldMap.onChunkLoad(chunk.getPos());
+			scanner.onChunkLoad(chunk.getPos());
+		});
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> Commands.register(dispatcher));
 

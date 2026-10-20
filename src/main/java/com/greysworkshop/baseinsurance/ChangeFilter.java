@@ -17,20 +17,25 @@ import java.util.Set;
  * (crops growing, fire, snow, copper oxidizing, doors opening...).
  */
 public final class ChangeFilter {
-	/** Blocks that come and go on their own; a change to or from one of these is ignored. */
-	private static final Set<Block> NATURAL = Set.of(
-			Blocks.FIRE, Blocks.SOUL_FIRE, Blocks.SNOW, Blocks.POWDER_SNOW,
+	/** Plants and other things that grow, spread or get harvested on their own. */
+	private static final Set<Block> PLANTS = Set.of(
 			Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.FERN, Blocks.LARGE_FERN,
 			Blocks.VINE, Blocks.GLOW_LICHEN, Blocks.CAVE_VINES, Blocks.CAVE_VINES_PLANT,
 			Blocks.WEEPING_VINES, Blocks.WEEPING_VINES_PLANT, Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT,
 			Blocks.SUGAR_CANE, Blocks.BAMBOO, Blocks.BAMBOO_SAPLING, Blocks.CACTUS, Blocks.CACTUS_FLOWER,
-			Blocks.KELP, Blocks.KELP_PLANT, Blocks.SEAGRASS, Blocks.TALL_SEAGRASS, Blocks.BUBBLE_COLUMN,
+			Blocks.KELP, Blocks.KELP_PLANT, Blocks.SEAGRASS, Blocks.TALL_SEAGRASS,
 			Blocks.PUMPKIN, Blocks.MELON, Blocks.CHORUS_PLANT, Blocks.CHORUS_FLOWER,
 			Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD, Blocks.AMETHYST_CLUSTER,
-			Blocks.POINTED_DRIPSTONE, Blocks.MOVING_PISTON, Blocks.PISTON_HEAD,
-			Blocks.SWEET_BERRY_BUSH, Blocks.NETHER_WART, Blocks.COCOA, Blocks.FROGSPAWN, Blocks.TURTLE_EGG,
-			Blocks.BROWN_MUSHROOM, Blocks.RED_MUSHROOM, Blocks.SCULK_VEIN
+			Blocks.POINTED_DRIPSTONE, Blocks.SWEET_BERRY_BUSH, Blocks.NETHER_WART, Blocks.COCOA, Blocks.FROGSPAWN,
+			Blocks.TURTLE_EGG, Blocks.BROWN_MUSHROOM, Blocks.RED_MUSHROOM, Blocks.SCULK_VEIN
 	);
+
+	/** Fire, snow and similar that appear and vanish with the weather. */
+	private static final Set<Block> WEATHER = Set.of(
+			Blocks.FIRE, Blocks.SOUL_FIRE, Blocks.SNOW, Blocks.POWDER_SNOW, Blocks.BUBBLE_COLUMN
+	);
+
+	private static final Set<Block> PISTON_PARTS = Set.of(Blocks.MOVING_PISTON, Blocks.PISTON_HEAD);
 
 	/** Blocks that turn into each other on their own count as the same block. */
 	private static final Map<Block, Integer> GROUPS = new HashMap<>();
@@ -60,9 +65,11 @@ public final class ChangeFilter {
 		if (Oxidizable.getUnaffectedOxidationBlock(a) == Oxidizable.getUnaffectedOxidationBlock(b)) return true;
 		Integer ga = GROUPS.get(a);
 		if (ga != null && ga.equals(GROUPS.get(b))) return true;
+		BIConfig config = BIConfig.INSTANCE;
 		// Anti-xray on many servers swaps ores and stone (or adds fake ores), so rock-for-rock changes are noise.
-		if (isRock(was) && isRock(now)) return true;
-		return isNatural(was) || isNatural(now) || isFlowing(was) || isFlowing(now);
+		if (config.ignoreOreSwaps && isRock(was) && isRock(now)) return true;
+		if (config.ignoreFlowingFluids && (isFlowing(was) || isFlowing(now))) return true;
+		return isNatural(was) || isNatural(now);
 	}
 
 	private static boolean isRock(BlockState state) {
@@ -79,8 +86,12 @@ public final class ChangeFilter {
 	}
 
 	private static boolean isNatural(BlockState state) {
-		if (NATURAL.contains(state.getBlock())) return true;
-		if (state.isIn(BlockTags.SAPLINGS) || state.isIn(BlockTags.LEAVES) || state.isIn(BlockTags.CROPS)) return true;
+		BIConfig config = BIConfig.INSTANCE;
+		Block block = state.getBlock();
+		if (config.ignorePlants && (PLANTS.contains(block)
+				|| state.isIn(BlockTags.SAPLINGS) || state.isIn(BlockTags.LEAVES) || state.isIn(BlockTags.CROPS))) return true;
+		if (config.ignoreWeather && WEATHER.contains(block)) return true;
+		if (config.ignorePistons && PISTON_PARTS.contains(block)) return true;
 		if (BIConfig.INSTANCE.ignoredBlocks.isEmpty()) return false;
 		Identifier id = Registries.BLOCK.getId(state.getBlock());
 		return BIConfig.INSTANCE.ignoredBlocks.contains(id.toString());

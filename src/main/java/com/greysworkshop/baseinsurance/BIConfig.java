@@ -12,33 +12,91 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** User settings, saved to config/baseinsurance/settings.json. */
+/** User settings, saved to config/baseinsurance/settings.json. Missing fields keep their defaults. */
 public final class BIConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
 	public static BIConfig INSTANCE = new BIConfig();
 
+	public enum AlertStyle { CHAT, ACTION_BAR, BOTH }
+
+	public enum Corner { TOP_LEFT, TOP_RIGHT }
+
 	public boolean enabled = true;
-	/** Play a sound with alerts. */
-	public boolean sounds = true;
+
+	// ---- Alerts ----
 	/** Alert when blocks change while you're nearby. */
 	public boolean liveAlerts = true;
+	/** Alert (and record) changes you made yourself. Off: your own edits go straight into the snapshot. */
+	public boolean countOwnChanges = false;
+	/** Live changes this close to you are treated as yours (0 = off). */
+	public int ignoreNearMe = 0;
+	/** Fewer live changes than this are logged quietly instead of alerting. */
+	public int liveAlertMinBlocks = 1;
+	public int liveAlertCooldownSeconds = 10;
+	/** Report what changed when you come back to a base. */
+	public boolean arrivalReports = true;
+	/** Say so when you come back and nothing changed. */
+	public boolean allClearMessages = true;
+	public int allClearMinAwayMinutes = 5;
 	/** Alert when another player comes near a base. */
 	public boolean playerAlerts = true;
-	/** Say so when you return to a base and nothing changed. */
-	public boolean allClearMessages = true;
-	/** Fill damage boxes with colour, not just outlines. */
-	public boolean overlayFill = true;
+	/** Only alert for players actually inside a base, not just near it. */
+	public boolean playerAlertsInsideOnly = false;
+	/** How close (in blocks) another player must get to a base to count as near it. */
+	public int playerAlertDistance = 32;
+	public int playerAlertCooldownMinutes = 5;
+	/** Alert when a container is missing items. */
+	public boolean theftAlerts = true;
+	public AlertStyle alertStyle = AlertStyle.CHAT;
+	public boolean sounds = true;
+	public int soundVolume = 100;
+
+	// ---- Detection ----
+	/** How long a block you broke or placed counts as your own edit. */
+	public int selfEditSeconds = 15;
+	public boolean ignorePlants = true;
+	public boolean ignoreWeather = true;
+	public boolean ignoreFlowingFluids = true;
+	public boolean ignoreOreSwaps = true;
+	/** Ignore blocks completely surrounded by solid blocks (nobody can see them; anti-xray fakes them). */
+	public boolean ignoreHidden = true;
+	public boolean ignorePistons = true;
+	public boolean trackContainers = true;
+	/** Chunk sections compared per tick (4096 blocks each). */
+	public int scanSpeed = 6;
+	/** Turn build mode off automatically once you're well away from all bases. */
+	public boolean buildModeAutoOff = true;
+
+	// ---- Overlay & HUD ----
 	/** Show the overlay automatically when you return to damage. */
 	public boolean autoOverlay = true;
 	public int overlayRange = 64;
-	/** How close (in blocks) another player must get to a base to count as near it. */
-	public int playerAlertDistance = 32;
+	/** Fill damage boxes with colour, not just outlines. */
+	public boolean overlayFill = true;
+	public int overlayOpacity = 30;
+	public int outlineWidth = 2;
+	public boolean showRemoved = true;
+	public boolean showAdded = true;
+	public boolean showReplaced = true;
+	/** "Missing: Obsidian" when you aim at a changed block. */
+	public boolean aimInfo = true;
+	/** The "Home: 12 blocks to fix" line. */
+	public boolean hudStatus = true;
+	public Corner hudCorner = Corner.TOP_LEFT;
 
+	// ---- Map ----
+	public boolean recordMap = true;
+	public int mapSpeed = 6;
+	public boolean mapDamageDots = true;
+	public boolean mapGrid = true;
+
+	// ---- Friends & data ----
 	/** Players who never trigger alerts or count as suspects (case-insensitive). */
 	public List<String> friends = new ArrayList<>();
 	/** Extra block ids to ignore changes to, e.g. "minecraft:cobblestone". */
 	public List<String> ignoredBlocks = new ArrayList<>();
+	public int maxEvents = 500;
 
 	public boolean isFriend(String name) {
 		for (String friend : friends) {
@@ -62,6 +120,8 @@ public final class BIConfig {
 			if (loaded != null) {
 				if (loaded.friends == null) loaded.friends = new ArrayList<>();
 				if (loaded.ignoredBlocks == null) loaded.ignoredBlocks = new ArrayList<>();
+				if (loaded.alertStyle == null) loaded.alertStyle = AlertStyle.CHAT;
+				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;
 				INSTANCE = loaded;
 			}
 		} catch (IOException | RuntimeException e) {

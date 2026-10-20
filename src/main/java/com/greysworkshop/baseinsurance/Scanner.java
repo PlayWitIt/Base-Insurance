@@ -24,19 +24,21 @@ import java.util.Map;
  * </ul>
  */
 public final class Scanner {
-	/** Loaded sections compared per tick (4096 blocks each). */
-	private static final int SECTIONS_PER_TICK = 6;
 	/** Upper bound on sections looked at per tick, loaded or not. */
 	private static final int MAX_VISITS_PER_TICK = 4000;
-	/** How long a block you touched counts as your own edit. */
-	private static final int SELF_EDIT_TICKS = 100;
-	private static final long LIVE_ALERT_INTERVAL = 10_000;
-	private static final long PLAYER_ALERT_INTERVAL = 5 * 60_000;
-	/** Coming back after less than this doesn't get an "all clear" message. */
-	private static final long ALL_CLEAR_MIN_AWAY = 5 * 60_000;
+	/** For this long after you touch a block, its current state is copied straight into the snapshot. */
+	private static final int APPLY_TICKS = 60;
+	/** A freshly (re)loaded chunk isn't trusted until it has been loaded this long; servers may fill it in stages. */
+	private static final int SETTLE_TICKS = 40;
+	/** Build mode turns itself off once you're this far from every base (if enabled). */
+	private static final int BUILD_MODE_RANGE = 64;
 
 	private final BaseManager manager;
 	private final Map<Long, Integer> selfEdits = new HashMap<>();
+	/** When each chunk was last (re)loaded, by ChunkPos long. */
+	private final Map<Long, Integer> chunkLoaded = new HashMap<>();
+	/** Blocks you just touched, and the tick you touched them; applied to the snapshot directly. */
+	private final Map<Long, Integer> pendingApply = new HashMap<>();
 	private final Map<Base, List<Base.Change>> pendingLive = new HashMap<>();
 	private final Map<Base, Long> lastLiveAlert = new HashMap<>();
 	private final Map<String, Long> lastPlayerAlert = new HashMap<>();
@@ -52,11 +54,24 @@ public final class Scanner {
 
 	/** Marks a block you broke or placed, so the change goes into the snapshot instead of the report. */
 	public void markSelfEdit(BlockPos pos) {
-		selfEdits.put(pos.asLong(), tick + SELF_EDIT_TICKS);
+		if (BIConfig.INSTANCE.countOwnChanges) return;
+		selfEdits.put(pos.asLong(), tick + BIConfig.INSTANCE.selfEditSeconds * 20);
+		pendingApply.put(pos.asLong(), tick);
+	}
+
+	public void onChunkLoad(net.minecraft.util.math.ChunkPos pos) {
+		chunkLoaded.put(pos.toLong(), tick);
+	}
+
+	private boolean settled(int cx, int cz) {
+		Integer loaded = chunkLoaded.get(net.minecraft.util.math.ChunkPos.toLong(cx, cz));
+		return loaded == null || tick - loaded >= SETTLE_TICKS;
 	}
 
 	public void reset() {
+		chunkLoaded.clear();
 		selfEdits.clear();
+		pendingApply.clear();
 		pendingLive.clear();
 		for (Base base : manager.all()) {
 			base.loadedSections.clear();
@@ -82,7 +97,10 @@ public final class Scanner {
 		}
 		if (active.isEmpty()) return;
 
-		int budget = SECTIONS_PER_TICK;
+		applySelfEdits(world, active);
+		if (buildMode && BIConfig.INSTANCE.buildModeAutoOff && client.player != null) autoBuildModeOff(client, active);
+
+		int budget = Math.max(1, BIConfig.INSTANCE.scanSpeed);
 		for (int visits = 0; budget > 0 && visits < MAX_VISITS_PER_TICK; visits++) {
 			Base base = active.get(Math.floorMod(baseIndex, active.size()));
 			List<Long> sections = base.sections();
@@ -104,7 +122,8 @@ public final class Scanner {
 		int sx = ChunkSectionPos.unpackX(key);
 		int sy = ChunkSectionPos.unpackY(key);
 		int sz = ChunkSectionPos.unpackZ(key);
-		if (!world.isChunkLoaded(sx, sz)) {
+		if (!world.isChunkLoaded(sx, sz) || !settled(sx, sz)) {
+			// Not loaded, or only just (re)loaded: wait. It counts as "returning" once it settles.
 			base.loadedSections.remove(key);
 			return false;
 		}
@@ -140,7 +159,7 @@ public final class Scanner {
 					long posKey = pos.asLong();
 					Base.Change existing = base.changes.get(posKey);
 
-					if (ChangeFilter.same(was, current)) {
+					if (ChangeFilter.same(was, current) || (BIConfig.INSTANCE.ignoreHidden && hidden(world, pos))) {
 						// Unchanged, or repaired.
 						if (existing != null) {
 							base.changes.remove(posKey);
@@ -149,7 +168,9 @@ public final class Scanner {
 						continue;
 					}
 
-					if (buildMode || selfEdits.containsKey(posKey)) {
+					boolean nearMe = wasLoaded && BIConfig.INSTANCE.ignoreNearMe > 0 && client.player != null
+							&& client.player.squaredDistanceTo(x + 0.5, y + 0.5, z + 0.5) <= BIConfig.INSTANCE.ignoreNearMe * BIConfig.INSTANCE.ignoreNearMe;
+					if (buildMode || nearMe || selfEdits.containsKey(posKey)) {
 						section.set(index, current);
 						base.baselineDirty = true;
 						if (existing != null) base.changes.remove(posKey);
@@ -188,6 +209,23 @@ public final class Scanner {
 		return true;
 	}
 
+	/**
+	 * True if every neighbour is a solid, opaque block, so nobody can see this block. Anti-xray plugins swap and
+	 * fake exactly these blocks, so their "changes" are noise. (Anything you dig into is exposed, so it still counts.)
+	 */
+	private static boolean hidden(ClientWorld world, BlockPos.Mutable pos) {
+		int x = pos.getX(), y = pos.getY(), z = pos.getZ();
+		BlockPos.Mutable n = new BlockPos.Mutable();
+		boolean result = world.getBlockState(n.set(x + 1, y, z)).isOpaqueFullCube()
+				&& world.getBlockState(n.set(x - 1, y, z)).isOpaqueFullCube()
+				&& world.getBlockState(n.set(x, y + 1, z)).isOpaqueFullCube()
+				&& world.getBlockState(n.set(x, y - 1, z)).isOpaqueFullCube()
+				&& world.getBlockState(n.set(x, y, z + 1)).isOpaqueFullCube()
+				&& world.getBlockState(n.set(x, y, z - 1)).isOpaqueFullCube();
+		pos.set(x, y, z);
+		return result;
+	}
+
 	private void finishPass(Base base) {
 		long now = System.currentTimeMillis();
 		if (base.loadedSections.isEmpty()) return;
@@ -211,16 +249,16 @@ public final class Scanner {
 			String summary = found.size() + " blocks changed: " + Alerts.summarize(found);
 			if (destroyedContainers > 0) summary += ". " + destroyedContainers + " container(s) destroyed";
 			base.log(Base.EventType.AWAY_DAMAGE, "While you were away (since " + Alerts.time(since) + "): " + summary);
-			Alerts.chat(Text.empty()
-					.append(Text.literal("⚠ " + base.name + " changed while you were away! ").formatted(Formatting.RED, Formatting.BOLD))
-					.append(Text.literal(summary + ". ").formatted(Formatting.YELLOW))
-					.append(Alerts.reportLink(base)));
-			Alerts.sound(true);
-			if (BIConfig.INSTANCE.autoOverlay) Overlay.enabled = true;
-		} else if (now - since >= ALL_CLEAR_MIN_AWAY && base.changes.isEmpty()) {
+			if (BIConfig.INSTANCE.arrivalReports) {
+				Alerts.alert(Text.empty()
+						.append(Text.literal("⚠ " + base.name + " changed while you were away! ").formatted(Formatting.RED, Formatting.BOLD))
+						.append(Text.literal(summary + ". ").formatted(Formatting.YELLOW))
+						.append(Alerts.reportLink(base)), true);
+				if (BIConfig.INSTANCE.autoOverlay) Overlay.enabled = true;
+			}
+		} else if (now - since >= BIConfig.INSTANCE.allClearMinAwayMinutes * 60_000L && base.changes.isEmpty()) {
 			if (BIConfig.INSTANCE.allClearMessages) {
-				Alerts.chat(Text.literal("✔ " + base.name + " is untouched since " + Alerts.time(since) + ".").formatted(Formatting.GREEN));
-				Alerts.sound(false);
+				Alerts.alert(Text.literal("✔ " + base.name + " is untouched since " + Alerts.time(since) + ".").formatted(Formatting.GREEN), false);
 			}
 			base.log(Base.EventType.ALL_CLEAR, "Checked on return: untouched since " + Alerts.time(since));
 		}
@@ -233,7 +271,7 @@ public final class Scanner {
 		while (it.hasNext()) {
 			var entry = it.next();
 			Base base = entry.getKey();
-			if (now - lastLiveAlert.getOrDefault(base, 0L) < LIVE_ALERT_INTERVAL) continue;
+			if (now - lastLiveAlert.getOrDefault(base, 0L) < BIConfig.INSTANCE.liveAlertCooldownSeconds * 1000L) continue;
 			List<Base.Change> changes = entry.getValue();
 			it.remove();
 			lastLiveAlert.put(base, now);
@@ -244,11 +282,11 @@ public final class Scanner {
 					: "nearby: " + String.join(", ", suspects);
 			String text = changes.size() + " block(s) changed: " + Alerts.summarize(changes) + " — " + who;
 			base.log(Base.EventType.LIVE_DAMAGE, text);
-			if (BIConfig.INSTANCE.liveAlerts) {
-				Alerts.chat(Text.empty()
+			// Small batches below the threshold are only logged, not announced.
+			if (BIConfig.INSTANCE.liveAlerts && changes.size() >= BIConfig.INSTANCE.liveAlertMinBlocks) {
+				Alerts.alert(Text.empty()
 						.append(Text.literal("⚠ " + base.name + ": ").formatted(Formatting.RED, Formatting.BOLD))
-						.append(Text.literal(text).formatted(Formatting.YELLOW)));
-				Alerts.sound(true);
+						.append(Text.literal(text).formatted(Formatting.YELLOW)), true);
 			}
 		}
 	}
@@ -270,6 +308,45 @@ public final class Scanner {
 		return result;
 	}
 
+	/**
+	 * Copies the current state of blocks you just touched straight into the snapshot, so your own edits never
+	 * show up as damage, however long the scanner takes to come round to them.
+	 */
+	private void applySelfEdits(ClientWorld world, List<Base> active) {
+		if (pendingApply.isEmpty()) return;
+		var it = pendingApply.entrySet().iterator();
+		while (it.hasNext()) {
+			var entry = it.next();
+			int age = tick - entry.getValue();
+			if (age > APPLY_TICKS) {
+				it.remove();
+				continue;
+			}
+			// Wait a couple of ticks for the block to actually change; keep re-applying in case the server corrects it.
+			if (age < 2) continue;
+			BlockPos pos = BlockPos.fromLong(entry.getKey());
+			for (Base base : active) {
+				if (!base.contains(pos) || base.baseline.get(pos) == null) continue;
+				BlockState current = world.getBlockState(pos);
+				if (base.baseline.get(pos) != current) {
+					base.baseline.set(pos, current);
+					base.baselineDirty = true;
+				}
+				if (base.changes.remove(entry.getKey()) != null) base.dirty = true;
+				if (!ContainerWatcher.isStorage(world.getBlockEntity(pos)) && base.containers.remove(entry.getKey()) != null) base.dirty = true;
+			}
+		}
+	}
+
+	private void autoBuildModeOff(MinecraftClient client, List<Base> active) {
+		if (tick % 20 != 0) return;
+		for (Base base : active) {
+			if (base.distanceTo(client.player.getX(), client.player.getY(), client.player.getZ()) <= BUILD_MODE_RANGE) return;
+		}
+		buildMode = false;
+		Alerts.alert(Text.literal("Build mode turned off: you've left your bases.").formatted(Formatting.GREEN), false);
+	}
+
 	private void watchPlayers(MinecraftClient client, List<Base> active) {
 		long now = System.currentTimeMillis();
 		for (PlayerEntity player : client.world.getPlayers()) {
@@ -278,15 +355,14 @@ public final class Scanner {
 			if (BIConfig.INSTANCE.isFriend(name)) continue;
 			for (Base base : active) {
 				double distance = base.distanceTo(player.getX(), player.getY(), player.getZ());
-				if (distance > BIConfig.INSTANCE.playerAlertDistance) continue;
+				if (distance > (BIConfig.INSTANCE.playerAlertsInsideOnly ? 0 : BIConfig.INSTANCE.playerAlertDistance)) continue;
 				String key = name + "\n" + base.name;
-				if (now - lastPlayerAlert.getOrDefault(key, 0L) < PLAYER_ALERT_INTERVAL) continue;
+				if (now - lastPlayerAlert.getOrDefault(key, 0L) < BIConfig.INSTANCE.playerAlertCooldownMinutes * 60_000L) continue;
 				lastPlayerAlert.put(key, now);
 				String where = distance == 0 ? "inside " + base.name : (int) distance + "m from " + base.name;
 				base.log(Base.EventType.PLAYER, name + " seen " + where + " at " + Alerts.pos(player.getBlockPos()));
 				if (BIConfig.INSTANCE.playerAlerts) {
-					Alerts.chat(Text.literal("◉ " + name + " is " + where + "!").formatted(Formatting.LIGHT_PURPLE));
-					Alerts.sound(true);
+					Alerts.alert(Text.literal("◉ " + name + " is " + where + "!").formatted(Formatting.LIGHT_PURPLE), true);
 				}
 			}
 		}

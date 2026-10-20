@@ -14,8 +14,6 @@ import java.util.Set;
 
 /** One protected area: its bounds, what has changed since the snapshot, and its history. Saved as JSON. */
 public final class Base {
-	public static final int MAX_EVENTS = 500;
-
 	public String name;
 	public String dimension;
 	public int minX, minY, minZ, maxX, maxY, maxZ;
@@ -141,7 +139,7 @@ public final class Base {
 
 	public void log(EventType type, String text) {
 		events.add(new Event(type, text));
-		while (events.size() > MAX_EVENTS) events.remove(0);
+		while (events.size() > Math.max(50, BIConfig.INSTANCE.maxEvents)) events.remove(0);
 		dirty = true;
 	}
 

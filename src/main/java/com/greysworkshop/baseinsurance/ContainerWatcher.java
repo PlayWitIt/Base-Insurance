@@ -70,7 +70,7 @@ public final class ContainerWatcher {
 	}
 
 	public void onUseBlock(ClientWorld world, BlockPos clicked) {
-		if (!isStorage(world.getBlockEntity(clicked))) return;
+		if (!BIConfig.INSTANCE.trackContainers || !isStorage(world.getBlockEntity(clicked))) return;
 		String dimension = BaseManager.dimensionKey(world);
 		for (Base candidate : manager.inDimension(dimension)) {
 			if (candidate.contains(clicked)) {
@@ -124,8 +124,7 @@ public final class ContainerWatcher {
 				+ " (last checked " + Alerts.time(approved.updated) + ")";
 		if (!extra.isEmpty()) text += "; new items: " + Alerts.topCounts(extra, 3);
 		base.log(Base.EventType.CONTAINER, text);
-		Alerts.chat(Text.literal("⚠ " + text).formatted(Formatting.RED));
-		Alerts.sound(true);
+		if (BIConfig.INSTANCE.theftAlerts) Alerts.alert(Text.literal("⚠ " + text).formatted(Formatting.RED), true);
 	}
 
 	private void onClose() {

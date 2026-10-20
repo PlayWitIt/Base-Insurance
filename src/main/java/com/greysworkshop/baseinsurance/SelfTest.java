@@ -180,7 +180,47 @@ public final class SelfTest {
 			case 740 -> screenshot(client, "7_report_timeline");
 			case 750 -> client.setScreen(new MapScreen());
 			case 770 -> screenshot(client, "8_map");
+			case 780 -> {
+				client.setScreen(null);
+				Overlay.enabled = false;
+				client.player.networkHandler.sendChatCommand("bi accept Test");
+				server(client, w -> {
+					var player = client.getServer().getPlayerManager().getPlayerList().get(0);
+					player.getInventory().setStack(0, new ItemStack(Items.STONE, 64));
+					player.getInventory().setSelectedSlot(0);
+				});
+			}
 			case 790 -> {
+				liveEventsBefore = countEvents(mod, Base.EventType.LIVE_DAMAGE);
+				log("Player breaks a block and places one (own edits)");
+				client.interactionManager.attackBlock(origin.add(1, -1, 0), Direction.UP);
+			}
+			case 796 -> {
+				BlockPos below = origin.add(0, -1, 2);
+				client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND,
+						new BlockHitResult(Vec3d.ofCenter(below).add(0, 0.5, 0), Direction.UP, below, false));
+			}
+			case 800 -> {
+				log("Server swaps a buried block, like anti-xray does");
+				server(client, w -> w.setBlockState(origin.add(2, -3, 2), Blocks.GOLD_BLOCK.getDefaultState()));
+			}
+			case 880 -> {
+				Base base = mod.manager.get("Test");
+				check("own edits and buried swaps aren't reported (" + base.changes.size() + " changes, "
+						+ (countEvents(mod, Base.EventType.LIVE_DAMAGE) - liveEventsBefore) + " new alerts)",
+						base.changes.isEmpty() && countEvents(mod, Base.EventType.LIVE_DAMAGE) == liveEventsBefore);
+				client.setScreen(new SettingsScreen(null));
+			}
+			case 895 -> screenshot(client, "9_settings_alerts");
+			case 900 -> showSettingsTab(client, 1);
+			case 910 -> screenshot(client, "9_settings_detection");
+			case 915 -> showSettingsTab(client, 2);
+			case 925 -> screenshot(client, "9_settings_overlay");
+			case 930 -> showSettingsTab(client, 3);
+			case 940 -> screenshot(client, "9_settings_map");
+			case 945 -> showSettingsTab(client, 4);
+			case 955 -> screenshot(client, "9_settings_data");
+			case 970 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");
@@ -199,6 +239,16 @@ public final class SelfTest {
 		double horizontal = Math.sqrt(d.x * d.x + d.z * d.z);
 		client.player.setYaw((float) Math.toDegrees(Math.atan2(-d.x, d.z)));
 		client.player.setPitch((float) -Math.toDegrees(Math.atan2(d.y, horizontal)));
+	}
+
+	private static int liveEventsBefore;
+
+	private static int countEvents(BaseInsuranceClient mod, Base.EventType type) {
+		return (int) mod.manager.get("Test").events.stream().filter(e -> e.type == type).count();
+	}
+
+	private static void showSettingsTab(MinecraftClient client, int tab) {
+		if (client.currentScreen instanceof OptionsScreen options) options.showTab(tab);
 	}
 
 	private static void openChest(MinecraftClient client) {

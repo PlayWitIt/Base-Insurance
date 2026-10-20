@@ -18,10 +18,11 @@ public final class Hud {
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (!BIConfig.INSTANCE.enabled || client.world == null || client.player == null || client.options.hudHidden) return;
 		TextRenderer font = client.textRenderer;
+		boolean right = BIConfig.INSTANCE.hudCorner == BIConfig.Corner.TOP_RIGHT;
 		int y = 4;
 
 		if (scanner.buildMode) {
-			context.drawTextWithShadow(font, Text.translatable("baseinsurance.hud.build_mode"), 4, y, 0xFFFFD000);
+			drawCorner(context, font, Text.translatable("baseinsurance.hud.build_mode"), y, 0xFFFFD000, right);
 			y += 11;
 		}
 
@@ -32,15 +33,20 @@ public final class Hud {
 				break;
 			}
 		}
-		if (here != null && (!here.changes.isEmpty() || Overlay.enabled)) {
+		if (BIConfig.INSTANCE.hudStatus && here != null && (!here.changes.isEmpty() || Overlay.enabled)) {
 			int count = here.changes.size();
 			Text status = count == 0
 					? Text.translatable("baseinsurance.hud.intact", here.name)
 					: Text.translatable("baseinsurance.hud.damage", here.name, count);
-			context.drawTextWithShadow(font, status, 4, y, count == 0 ? 0xFF55FF55 : 0xFFFF5555);
+			drawCorner(context, font, status, y, count == 0 ? 0xFF55FF55 : 0xFFFF5555, right);
 		}
 
-		if (Overlay.enabled && client.currentScreen == null) drawAimInfo(context, font, client, manager);
+		if (Overlay.enabled && BIConfig.INSTANCE.aimInfo && client.currentScreen == null) drawAimInfo(context, font, client, manager);
+	}
+
+	private static void drawCorner(DrawContext context, TextRenderer font, Text text, int y, int color, boolean right) {
+		int x = right ? context.getScaledWindowWidth() - 4 - font.getWidth(text) : 4;
+		context.drawTextWithShadow(font, text, x, y, color);
 	}
 
 	/** Walks along your line of sight to the first changed block, stopping at anything solid that isn't one. */
@@ -59,6 +65,7 @@ public final class Hud {
 			for (Base base : bases) {
 				if (base.contains(pos)) {
 					hit = base.changes.get(key);
+					if (hit != null && !Overlay.shown(hit.kind())) hit = null;
 					if (hit != null) break;
 				}
 			}
