@@ -220,7 +220,52 @@ public final class SelfTest {
 			case 940 -> screenshot(client, "9_settings_map");
 			case 945 -> showSettingsTab(client, 4);
 			case 955 -> screenshot(client, "9_settings_data");
-			case 970 -> {
+			case 965 -> {
+				client.setScreen(null);
+				client.player.networkHandler.sendChatCommand("bi delete Hide confirm");
+				client.player.networkHandler.sendChatCommand("bi create Hide 20 4 40");
+			}
+			case 1000 -> {
+				Base hide = mod.manager.get("Hide");
+				check("Hide base snapshotted (" + hide.baseline.sections.size() + "/" + hide.sections().size() + ")",
+						hide.baseline.sections.size() == hide.sections().size());
+				log("Server reveals hidden terrain: a whole section of air becomes stone, deepslate and lava");
+				BIConfig.INSTANCE.enabled = false;
+				int baseX = origin.getX() >> 4 << 4, baseZ = origin.getZ() >> 4 << 4;
+				server(client, w -> {
+					for (int y = -48; y <= -33; y++) {
+						for (int x = 0; x < 16; x++) {
+							for (int z = 0; z < 16; z++) {
+								var state = (x * 7 + z * 3 + y) % 31 == 0 ? Blocks.LAVA.getDefaultState()
+										: y < -40 ? Blocks.DEEPSLATE.getDefaultState() : Blocks.STONE.getDefaultState();
+								w.setBlockState(new BlockPos(baseX + x, y, baseZ + z), state, 2);
+							}
+						}
+					}
+				});
+			}
+			case 1020 -> {
+				mod.scanner.reset();
+				BIConfig.INSTANCE.enabled = true;
+			}
+			case 1080 -> {
+				Base hide = mod.manager.get("Hide");
+				check("terrain appearing where the server sent air isn't reported (" + hide.changes.size() + " changes)",
+						hide.changes.isEmpty());
+				log("A griefer places cobblestone and a lava source in the open");
+				server(client, w -> {
+					w.setBlockState(origin.add(-8, 0, 8), Blocks.COBBLESTONE.getDefaultState());
+					w.setBlockState(origin.add(-8, 1, 8), Blocks.COBBLESTONE.getDefaultState());
+					w.setBlockState(origin.add(-9, 0, 8), Blocks.COBBLESTONE.getDefaultState());
+					w.setBlockState(origin.add(-12, 0, 12), Blocks.LAVA.getDefaultState());
+				});
+			}
+			case 1130 -> {
+				Base hide = mod.manager.get("Hide");
+				check("real griefing (cobblestone, lava) is still reported (" + hide.changes.size() + " changes)",
+						hide.changes.size() >= 4);
+			}
+			case 1140 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

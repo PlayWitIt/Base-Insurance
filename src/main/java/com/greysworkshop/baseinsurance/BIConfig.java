@@ -59,6 +59,8 @@ public final class BIConfig {
 	public boolean ignoreWeather = true;
 	public boolean ignoreFlowingFluids = true;
 	public boolean ignoreOreSwaps = true;
+	/** Recognise servers hiding underground terrain (sending air) and don't report it as changes. */
+	public boolean smartTerrain = true;
 	/** Ignore blocks completely surrounded by solid blocks (nobody can see them; anti-xray fakes them). */
 	public boolean ignoreHidden = true;
 	public boolean ignorePistons = true;

@@ -165,5 +165,7 @@
 	"baseinsurance.config.open_folder.desc": "Open the folder with your bases, snapshots and map files.",
 	"baseinsurance.config.open_folder.button": "Open folder",
 	"baseinsurance.config.ignore_hidden": "Buried blocks (anti-xray)",
-	"baseinsurance.config.ignore_hidden.desc": "Ignore blocks completely surrounded by solid blocks. Nobody can see those, and servers with anti-xray constantly swap or fake them, which otherwise shows up as thousands of changes. Anything you dig into becomes exposed and is tracked again."
+	"baseinsurance.config.ignore_hidden.desc": "Ignore blocks completely surrounded by solid blocks. Nobody can see those, and servers with anti-xray constantly swap or fake them, which otherwise shows up as thousands of changes. Anything you dig into becomes exposed and is tracked again.",
+	"baseinsurance.config.smart_terrain": "Hidden terrain (anti-freecam)",
+	"baseinsurance.config.smart_terrain.desc": "Some servers send air instead of underground terrain until you're close. With this on, natural stone, dirt, ores and so on appearing where the snapshot had air are treated as the real terrain loading in, a section snapshotted while hidden is re-snapshotted, and far-off terrain turning to air is ignored until you're near. Building blocks, lava and water placed on their own are still reported."
 }

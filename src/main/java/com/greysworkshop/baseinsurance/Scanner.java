@@ -136,6 +136,25 @@ public final class Scanner {
 			return true;
 		}
 
+		if (BIConfig.INSTANCE.smartTerrain) {
+			switch (checkSection(client, world, base, section, sx, sy, sz)) {
+				case RECAPTURE -> {
+					// The snapshot caught this section while the server was hiding it: take it again.
+					base.baseline.sections.put(key, Baseline.capture(world, key));
+					base.baselineDirty = true;
+					clearChanges(base, sx, sy, sz);
+					base.loadedSections.add(key);
+					return true;
+				}
+				case HIDDEN -> {
+					// The server is hiding this far-off section right now; wait until it's sent for real.
+					base.loadedSections.remove(key);
+					return true;
+				}
+				case OK -> {}
+			}
+		}
+
 		long now = System.currentTimeMillis();
 		boolean wasLoaded = base.loadedSections.contains(key);
 		if (!wasLoaded && !base.arriving) {
@@ -170,7 +189,9 @@ public final class Scanner {
 
 					boolean nearMe = wasLoaded && BIConfig.INSTANCE.ignoreNearMe > 0 && client.player != null
 							&& client.player.squaredDistanceTo(x + 0.5, y + 0.5, z + 0.5) <= BIConfig.INSTANCE.ignoreNearMe * BIConfig.INSTANCE.ignoreNearMe;
-					if (buildMode || nearMe || selfEdits.containsKey(posKey)) {
+					// Natural terrain where the snapshot had air is the real world arriving, not someone building.
+					boolean terrainArrived = BIConfig.INSTANCE.smartTerrain && was.isAir() && ChangeFilter.isTerrain(current, false);
+					if (buildMode || nearMe || terrainArrived || selfEdits.containsKey(posKey)) {
 						section.set(index, current);
 						base.baselineDirty = true;
 						if (existing != null) base.changes.remove(posKey);
@@ -207,6 +228,54 @@ public final class Scanner {
 		}
 		base.loadedSections.add(key);
 		return true;
+	}
+
+	private enum SectionCheck { OK, RECAPTURE, HIDDEN }
+
+	/** Sections are only judged as hidden by the server while you're at least this far from them. */
+	private static final double HIDDEN_MIN_DISTANCE = 32;
+
+	/**
+	 * Spots servers that hide underground terrain (sending air until you're close): a section that was mostly
+	 * air in the snapshot but is now mostly terrain was snapshotted while hidden; a far-off section whose blocks
+	 * have mostly turned to air is being hidden right now.
+	 */
+	private static SectionCheck checkSection(MinecraftClient client, ClientWorld world, Base base, Baseline.Section section,
+			int sx, int sy, int sz) {
+		int x0 = Math.max(sx << 4, base.minX), x1 = Math.min((sx << 4) + 15, base.maxX);
+		int y0 = Math.max(sy << 4, base.minY), y1 = Math.min((sy << 4) + 15, base.maxY);
+		int z0 = Math.max(sz << 4, base.minZ), z1 = Math.min((sz << 4) + 15, base.maxZ);
+		int total = 0, appeared = 0, solidBefore = 0, vanished = 0;
+		BlockPos.Mutable pos = new BlockPos.Mutable();
+		for (int y = y0; y <= y1; y++) {
+			for (int z = z0; z <= z1; z++) {
+				for (int x = x0; x <= x1; x++) {
+					BlockState was = section.get(Baseline.index(x, y, z));
+					if (was == null) continue;
+					total++;
+					BlockState current = world.getBlockState(pos.set(x, y, z));
+					if (was.isAir()) {
+						if (!current.isAir() && ChangeFilter.isTerrain(current, true)) appeared++;
+					} else {
+						solidBefore++;
+						if (current.isAir()) vanished++;
+					}
+				}
+			}
+		}
+		if (total > 0 && appeared >= 64 && appeared * 4 >= total) return SectionCheck.RECAPTURE;
+		if (solidBefore >= 64 && vanished * 2 >= solidBefore && client.player != null) {
+			double cx = (sx << 4) + 8, cy = (sy << 4) + 8, cz = (sz << 4) + 8;
+			if (client.player.squaredDistanceTo(cx, cy, cz) > HIDDEN_MIN_DISTANCE * HIDDEN_MIN_DISTANCE) return SectionCheck.HIDDEN;
+		}
+		return SectionCheck.OK;
+	}
+
+	private static void clearChanges(Base base, int sx, int sy, int sz) {
+		if (base.changes.isEmpty()) return;
+		boolean removed = base.changes.keySet().removeIf(key -> BlockPos.unpackLongX(key) >> 4 == sx
+				&& BlockPos.unpackLongY(key) >> 4 == sy && BlockPos.unpackLongZ(key) >> 4 == sz);
+		if (removed) base.dirty = true;
 	}
 
 	/**

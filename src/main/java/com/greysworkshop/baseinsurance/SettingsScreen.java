@@ -61,6 +61,7 @@ public class SettingsScreen extends OptionsScreen {
 					r.toggle("ignore_plants", () -> c.ignorePlants, v -> c.ignorePlants = v);
 					r.toggle("ignore_weather", () -> c.ignoreWeather, v -> c.ignoreWeather = v);
 					r.toggle("ignore_fluids", () -> c.ignoreFlowingFluids, v -> c.ignoreFlowingFluids = v);
+					r.toggle("smart_terrain", () -> c.smartTerrain, v -> c.smartTerrain = v);
 					r.toggle("ignore_hidden", () -> c.ignoreHidden, v -> c.ignoreHidden = v);
 					r.toggle("ignore_ores", () -> c.ignoreOreSwaps, v -> c.ignoreOreSwaps = v);
 					r.toggle("ignore_pistons", () -> c.ignorePistons, v -> c.ignorePistons = v);

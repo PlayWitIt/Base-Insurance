@@ -80,6 +80,24 @@ public final class ChangeFilter {
 				|| state.isOf(Blocks.NETHER_QUARTZ_ORE) || state.isOf(Blocks.ANCIENT_DEBRIS) || state.isOf(Blocks.END_STONE);
 	}
 
+	/** Natural terrain blocks (not building blocks like cobblestone, obsidian or planks). */
+	private static final Set<Block> TERRAIN = Set.of(
+			Blocks.GRAVEL, Blocks.CLAY, Blocks.CALCITE, Blocks.DRIPSTONE_BLOCK, Blocks.SMOOTH_BASALT, Blocks.BEDROCK,
+			Blocks.SANDSTONE, Blocks.RED_SANDSTONE, Blocks.SNOW_BLOCK, Blocks.ICE, Blocks.PACKED_ICE, Blocks.BLUE_ICE,
+			Blocks.MAGMA_BLOCK, Blocks.SOUL_SAND, Blocks.SOUL_SOIL, Blocks.AMETHYST_BLOCK, Blocks.BUDDING_AMETHYST,
+			Blocks.RAW_IRON_BLOCK, Blocks.RAW_COPPER_BLOCK, Blocks.GLOWSTONE, Blocks.SCULK, Blocks.MOSS_BLOCK
+	);
+
+	/**
+	 * True for natural terrain: stone of all kinds, ores, dirt, sand, gravel and so on. With {@code fluids},
+	 * water and lava count too (used when judging a whole section, not single blocks, so lava casts still show).
+	 */
+	public static boolean isTerrain(BlockState state, boolean fluids) {
+		if (isRock(state) || TERRAIN.contains(state.getBlock())) return true;
+		if (state.isIn(BlockTags.DIRT) || state.isIn(BlockTags.SAND) || state.isIn(BlockTags.TERRACOTTA)) return true;
+		return fluids && !state.getFluidState().isEmpty();
+	}
+
 	/** Flowing (non-source) water and lava spreads on its own whenever a source is placed or removed. */
 	private static boolean isFlowing(BlockState state) {
 		return !state.getFluidState().isEmpty() && !state.getFluidState().isStill();
