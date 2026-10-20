@@ -207,7 +207,7 @@ public class ReportScreen extends Screen {
 				+ (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + " blocks", GOLD));
 		lines.add(line("From " + base.minX + " " + base.minY + " " + base.minZ + " to " + base.maxX + " " + base.maxY + " " + base.maxZ
 				+ ". Insured since " + Alerts.time(base.created) + ". Last visit " + Alerts.ago(base.lastSeen) + ".", GRAY,
-				List.of(new Action("Map", CYAN, () -> client.setScreen(new MapScreen())))));
+				List.of(new Action("Map", CYAN, () -> client.setScreen(MapScreen.centeredOn(base))))));
 		lines.add(blank());
 
 		if (base.changes.isEmpty()) {

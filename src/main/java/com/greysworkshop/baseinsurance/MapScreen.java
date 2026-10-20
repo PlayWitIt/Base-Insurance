@@ -339,6 +339,7 @@ public class MapScreen extends Screen {
 		drawGrid(context, right);
 		for (Base base : bases()) drawBase(context, base);
 		if (createMode) drawSelection(context);
+		drawTrustCircle(context);
 		drawPlayer(context);
 		context.disableScissor();
 		drawOverlayText(context, mouseX, mouseY, right);
@@ -534,15 +535,46 @@ public class MapScreen extends Screen {
 	}
 
 	/** How much of the proposed area is loaded right now (and so can be snapshotted straight away). */
+	/** How much of the proposed area (by footprint) is within the trust radius of you, so captured straight away. */
 	private int loadedPercent() {
-		int total = 0, loaded = 0;
-		for (int cx = selMinX >> 4; cx <= selMaxX >> 4; cx++) {
-			for (int cz = selMinZ >> 4; cz <= selMaxZ >> 4; cz++) {
+		if (client.player == null) return 0;
+		double radius = BIConfig.INSTANCE.trustRadius;
+		double px = client.player.getX(), pz = client.player.getZ();
+		int total = 0, near = 0;
+		// Sample every 4 blocks; plenty for a percentage.
+		for (int x = selMinX; x <= selMaxX; x += 4) {
+			for (int z = selMinZ; z <= selMaxZ; z += 4) {
 				total++;
-				if (client.world.isChunkLoaded(cx, cz)) loaded++;
+				double dx = x + 0.5 - px, dz = z + 0.5 - pz;
+				if (dx * dx + dz * dz <= radius * radius && client.world.isChunkLoaded(x >> 4, z >> 4)) near++;
 			}
 		}
-		return total == 0 ? 0 : 100 * loaded / total;
+		return total == 0 ? 0 : 100 * near / total;
+	}
+
+	/** A dashed circle showing the trust radius around you: what gets checked from where you stand. */
+	private void drawTrustCircle(DrawContext context) {
+		if (client.player == null) return;
+		double radius = BIConfig.INSTANCE.trustRadius * zoom;
+		if (radius < 6) return;
+		double cx = screenX(client.player.getX()), cy = screenY(client.player.getZ());
+		int dashes = 72;
+		for (int i = 0; i < dashes; i += 2) {
+			for (int step = 0; step < 4; step++) {
+				double angle = (i + step / 4.0) / dashes * Math.PI * 2;
+				int x = (int) Math.round(cx + Math.cos(angle) * radius), y = (int) Math.round(cy + Math.sin(angle) * radius);
+				context.fill(x, y, x + 1, y + 1, 0xC0FFE060);
+			}
+		}
+	}
+
+	/** A map centred on a base. */
+	public static MapScreen centeredOn(Base base) {
+		MapScreen screen = new MapScreen();
+		centerX = (base.minX + base.maxX + 1) / 2.0;
+		centerZ = (base.minZ + base.maxZ + 1) / 2.0;
+		viewDimension = base.dimension;
+		return screen;
 	}
 
 	private static String compact(long n) {
