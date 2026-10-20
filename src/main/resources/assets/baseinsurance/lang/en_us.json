@@ -5,8 +5,8 @@
 	"key.baseinsurance.build": "Toggle build mode",
 
 	"baseinsurance.hud.build_mode": "⚒ BUILD MODE: changes go into the snapshot",
-	"baseinsurance.hud.intact": "🛡 %s: intact",
-	"baseinsurance.hud.damage": "🛡 %s: %s blocks to fix",
+	"baseinsurance.hud.intact": "⚑ %s: intact",
+	"baseinsurance.hud.damage": "⚑ %s: %s blocks to fix",
 	"baseinsurance.hud.missing": "Missing: %s",
 	"baseinsurance.hud.added": "Placed by someone else: %s",
 	"baseinsurance.hud.replaced": "Should be %s (now %s)",

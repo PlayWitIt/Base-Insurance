@@ -285,7 +285,7 @@ public final class Scanner {
 				String where = distance == 0 ? "inside " + base.name : (int) distance + "m from " + base.name;
 				base.log(Base.EventType.PLAYER, name + " seen " + where + " at " + Alerts.pos(player.getBlockPos()));
 				if (BIConfig.INSTANCE.playerAlerts) {
-					Alerts.chat(Text.literal("👁 " + name + " is " + where + "!").formatted(Formatting.LIGHT_PURPLE));
+					Alerts.chat(Text.literal("◉ " + name + " is " + where + "!").formatted(Formatting.LIGHT_PURPLE));
 					Alerts.sound(true);
 				}
 			}

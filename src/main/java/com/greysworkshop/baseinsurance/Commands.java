@@ -149,7 +149,7 @@ public final class Commands {
 				+ (base.maxX - base.minX + 1) + "×" + (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + ")");
 		manager.add(base);
 
-		s.sendFeedback(Text.literal("🛡 " + name + " is now insured: " + (base.maxX - base.minX + 1) + "×"
+		s.sendFeedback(Text.literal("⚑ " + name + " is now insured: " + (base.maxX - base.minX + 1) + "×"
 				+ (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + " blocks around you.").formatted(Formatting.GREEN));
 		s.sendFeedback(Text.literal("The snapshot is taken over the next few seconds. Parts that aren't loaded yet are captured when you get near them.").formatted(Formatting.GRAY));
 		if (seeded > 0) {
@@ -226,7 +226,7 @@ public final class Commands {
 		Base base = current(c);
 		if (base == null) return 0;
 		FabricClientCommandSource s = c.getSource();
-		s.sendFeedback(Text.literal("🛡 " + base.name).formatted(Formatting.GOLD)
+		s.sendFeedback(Text.literal("⚑ " + base.name).formatted(Formatting.GOLD)
 				.append(Text.literal(" from " + base.minX + " " + base.minY + " " + base.minZ + " to " + base.maxX + " " + base.maxY + " " + base.maxZ).formatted(Formatting.GRAY)));
 		s.sendFeedback(Text.literal(base.baseline.sections.size() + "/" + base.sections().size() + " sections captured, "
 				+ base.containers.size() + " containers on record, " + base.changes.size() + " changes.").formatted(Formatting.GRAY));

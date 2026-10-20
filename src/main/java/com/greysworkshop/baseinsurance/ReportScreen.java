@@ -90,6 +90,13 @@ public class ReportScreen extends Screen {
 		rebuildRows();
 	}
 
+	/** Switches tab by name, e.g. "BLOCKS". */
+	public void showTab(String name) {
+		tab = Tab.valueOf(name);
+		scroll = 0;
+		clearAndInit();
+	}
+
 	private static Text overlayLabel() {
 		return ScreenTexts.composeToggleText(Text.translatable("baseinsurance.report.overlay"), Overlay.enabled);
 	}
@@ -143,7 +150,7 @@ public class ReportScreen extends Screen {
 
 		int destroyed = destroyedContainers().size();
 		long thefts = base.events.stream().filter(e -> e.type == Base.EventType.CONTAINER).count();
-		lines.add(text("📦 " + base.containers.size() + " containers on record"
+		lines.add(text("▣ " + base.containers.size() + " containers on record"
 				+ (destroyed > 0 ? ", " + destroyed + " destroyed" : "")
 				+ (thefts > 0 ? ", " + thefts + " theft report(s)" : "") + ".", destroyed + thefts > 0 ? RED : WHITE));
 		int captured = base.baseline.sections.size(), total = base.sections().size();
@@ -153,7 +160,7 @@ public class ReportScreen extends Screen {
 		lines.add(blank());
 
 		List<Base.Event> sightings = base.events.stream().filter(e -> e.type == Base.EventType.PLAYER).toList();
-		lines.add(text("👁 Players seen near this base: " + (sightings.isEmpty() ? "none" : ""), sightings.isEmpty() ? GREEN : PURPLE));
+		lines.add(text("◉ Players seen near this base: " + (sightings.isEmpty() ? "none" : ""), sightings.isEmpty() ? GREEN : PURPLE));
 		for (int i = sightings.size() - 1; i >= Math.max(0, sightings.size() - 6); i--) {
 			lines.add(indented("[" + Alerts.time(sightings.get(i).time) + "] " + sightings.get(i).text, GRAY, 10));
 		}
@@ -222,7 +229,7 @@ public class ReportScreen extends Screen {
 		List<Line> lines = new ArrayList<>();
 		List<Long> destroyed = destroyedContainers();
 		if (!destroyed.isEmpty()) {
-			lines.add(text("💥 Destroyed containers (" + destroyed.size() + ")", RED));
+			lines.add(text("✖ Destroyed containers (" + destroyed.size() + ")", RED));
 			for (long key : destroyed) {
 				Base.ContainerSnapshot snapshot = base.containers.get(key);
 				lines.add(indented(BlockStates.name(snapshot.block).getString() + " at " + Alerts.pos(BlockPos.fromLong(key))
@@ -233,14 +240,14 @@ public class ReportScreen extends Screen {
 		}
 
 		List<Base.Event> thefts = base.events.stream().filter(e -> e.type == Base.EventType.CONTAINER).toList();
-		lines.add(text("🕵 Theft reports (" + thefts.size() + ")", thefts.isEmpty() ? GREEN : RED));
+		lines.add(text("⚠ Theft reports (" + thefts.size() + ")", thefts.isEmpty() ? GREEN : RED));
 		if (thefts.isEmpty()) lines.add(indented("Nothing missing from any container you've opened.", GRAY, 10));
 		for (int i = thefts.size() - 1; i >= 0; i--) {
 			lines.add(indented("[" + Alerts.time(thefts.get(i).time) + "] " + thefts.get(i).text, YELLOW, 10));
 		}
 		lines.add(blank());
 
-		lines.add(text("📦 Containers on record (" + base.containers.size() + ")", GOLD));
+		lines.add(text("▣ Containers on record (" + base.containers.size() + ")", GOLD));
 		if (base.containers.isEmpty()) {
 			lines.add(indented("Open the chests, barrels and shulker boxes in your base once to put their contents on record.", GRAY, 10));
 		}

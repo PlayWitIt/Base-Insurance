@@ -82,6 +82,15 @@ public class BaseInsuranceClient implements ClientModInitializer {
 
 		HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (context, tickCounter) -> Hud.render(context, tickCounter, manager, scanner));
 		WorldRenderEvents.BEFORE_DEBUG_RENDER.register(context -> Overlay.render(context, manager));
+
+		// Scripted development test (./gradlew runSelfTest); the class isn't shipped in the release jar.
+		if (Boolean.getBoolean("baseinsurance.selftest")) {
+			try {
+				Class.forName("com.greysworkshop.baseinsurance.SelfTest").getMethod("start").invoke(null);
+			} catch (ReflectiveOperationException e) {
+				LOGGER.error("Self-test not available", e);
+			}
+		}
 	}
 
 	private void markAround(BlockPos pos) {
