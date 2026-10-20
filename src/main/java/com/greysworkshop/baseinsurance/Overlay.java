@@ -20,6 +20,8 @@ public final class Overlay {
 	public static final int REMOVED = 0xFF3030;
 	public static final int ADDED = 0xFF9900;
 	public static final int REPLACED = 0xFFE030;
+	/** Item frames, armor stands and paintings. */
+	public static final int ENTITY = 0xE040FF;
 	private static final int MAX_BOXES = 8000;
 	private static final double GROW = 0.004;
 	private static final VoxelShape SHAPE = VoxelShapes.cuboid(-GROW, -GROW, -GROW, 1 + GROW, 1 + GROW, 1 + GROW);
@@ -57,7 +59,7 @@ public final class Overlay {
 
 		List<Box> boxes = new ArrayList<>();
 		for (Base base : manager.inDimension(BaseManager.dimensionKey(client.world))) {
-			if (base.changes.isEmpty() || base.distanceTo(camera.x, camera.y, camera.z) > range) continue;
+			if (base.damageCount() == 0 || base.distanceTo(camera.x, camera.y, camera.z) > range) continue;
 			for (Map.Entry<Long, Base.Change> entry : base.changes.entrySet()) {
 				long key = entry.getKey();
 				double x = BlockPos.unpackLongX(key), y = BlockPos.unpackLongY(key), z = BlockPos.unpackLongZ(key);
@@ -67,6 +69,11 @@ public final class Overlay {
 				if (!shown(kind)) continue;
 				boxes.add(new Box(x - camera.x, y - camera.y, z - camera.z, color(kind)));
 				if (boxes.size() >= MAX_BOXES) break;
+			}
+			for (Base.EntityChange change : base.entityChanges.values()) {
+				BlockPos pos = change.was.pos();
+				if (camera.squaredDistanceTo(pos.toCenterPos()) > rangeSq) continue;
+				boxes.add(new Box(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z, ENTITY));
 			}
 		}
 		if (boxes.isEmpty()) return;

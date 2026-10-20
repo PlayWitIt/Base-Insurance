@@ -76,7 +76,7 @@ public final class Scanner {
 		chunkLoaded.put(pos.toLong(), tick);
 	}
 
-	private boolean settled(int cx, int cz) {
+	public boolean settled(int cx, int cz) {
 		Integer loaded = chunkLoaded.get(net.minecraft.util.math.ChunkPos.toLong(cx, cz));
 		return loaded == null || tick - loaded >= SETTLE_TICKS;
 	}

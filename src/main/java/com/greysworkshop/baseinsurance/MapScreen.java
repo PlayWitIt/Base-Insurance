@@ -352,9 +352,9 @@ public class MapScreen extends Screen {
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
 			Base base = baseAt(mouseX, mouseY);
 			if (base != null) {
-				Text tip = base.changes.isEmpty()
+				Text tip = base.damageCount() == 0
 						? Text.translatable("baseinsurance.map.tip_intact", base.name)
-						: Text.translatable("baseinsurance.map.tip_damage", base.name, Alerts.plural(base.changes.size(), "changed block"));
+						: Text.translatable("baseinsurance.map.tip_damage", base.name, Alerts.plural(base.damageCount(), "change"));
 				context.drawTooltip(textRenderer, tip, mouseX, mouseY);
 			}
 		}
@@ -400,7 +400,7 @@ public class MapScreen extends Screen {
 	private void drawBase(DrawContext context, Base base) {
 		int x0 = (int) screenX(base.minX), x1 = (int) screenX(base.maxX + 1);
 		int y0 = (int) screenY(base.minZ), y1 = (int) screenY(base.maxZ + 1);
-		boolean damaged = !base.changes.isEmpty();
+		boolean damaged = base.damageCount() > 0;
 		int color = damaged ? 0xFFFF5050 : 0xFF50FF70;
 		context.fill(x0, y0, x1, y1, (color & 0xFFFFFF) | 0x28000000);
 		// Shade the parts not seen up close yet: the darker, the less has been seen.
@@ -415,7 +415,7 @@ public class MapScreen extends Screen {
 		}
 		context.drawStrokedRectangle(x0, y0, Math.max(1, x1 - x0), Math.max(1, y1 - y0), color);
 		int percent = base.snapshotPercent();
-		String label = (damaged ? base.name + " ⚠" + base.changes.size() : base.name) + (percent < 100 ? "  ◔" + percent + "%" : "");
+		String label = (damaged ? base.name + " ⚠" + base.damageCount() : base.name) + (percent < 100 ? "  ◔" + percent + "%" : "");
 		int w = textRenderer.getWidth(label);
 		int lx = (x0 + x1) / 2 - w / 2;
 		int ly = y0 - 11;
@@ -484,11 +484,11 @@ public class MapScreen extends Screen {
 			for (int i = 0; i < all.size(); i++) {
 				Base base = all.get(i);
 				if (!base.dimension.equals(here)) continue;
-				String line = (base.changes.isEmpty() ? "✔ " : "⚠ ") + base.name;
+				String line = (base.damageCount() == 0 ? "✔ " : "⚠ ") + base.name;
 				int w = font.getWidth(line) + 8;
 				boolean hover = mouseX >= 4 && mouseX < 4 + w && mouseY >= y - 1 && mouseY < y + 10;
 				context.fill(4, y - 1, 4 + w, y + 10, hover ? 0xC0303048 : PANEL);
-				context.drawTextWithShadow(font, line, 8, y, base.changes.isEmpty() ? 0xFF50FF70 : 0xFFFF5050);
+				context.drawTextWithShadow(font, line, 8, y, base.damageCount() == 0 ? 0xFF50FF70 : 0xFFFF5050);
 				baseListRows.add(new int[]{i, y, 4 + w});
 				y += 12;
 			}

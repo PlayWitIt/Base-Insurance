@@ -30,6 +30,12 @@ public final class Base {
 	public List<Event> events = new ArrayList<>();
 	/** Approved contents of containers, by {@link BlockPos#asLong()} (double chests use their lower-coordinate half). */
 	public Map<Long, ContainerSnapshot> containers = new HashMap<>();
+	/** Item frames, armor stands and paintings as last seen up close, by {@link EntityWatch#key}. */
+	public Map<String, EntityRecord> entities = new HashMap<>();
+	/** Entities that differ from their record (removed, or contents changed), by key. */
+	public Map<String, EntityChange> entityChanges = new HashMap<>();
+	/** Whether entities were being watched on the last entity scan (so new changes are "live"). */
+	public transient boolean entitiesWatched;
 
 	/** The block snapshot; stored in its own file. */
 	public transient Baseline baseline = new Baseline();
@@ -163,6 +169,64 @@ public final class Base {
 
 	public enum Kind { REMOVED, ADDED, REPLACED }
 
+	/** An item frame, armor stand or painting as last seen. */
+	public static final class EntityRecord {
+		/** Entity type id, e.g. "minecraft:item_frame". */
+		public String type;
+		/** Display name, e.g. "Item Frame". */
+		public String name;
+		public int x, y, z;
+		/** Item frames: the item id inside ("" if empty), its map id (-1 if not a map) and rotation. */
+		public String item = "";
+		public int mapId = -1;
+		public int rotation;
+		/** Armor stands: equipment item ids, head to off hand. */
+		public String equipment = "";
+		/** Paintings: the variant id. */
+		public String variant = "";
+
+		/** Everything that counts as "the same": compared to spot changes. */
+		public String detail() {
+			return item + "#" + mapId + "@" + rotation + "|" + equipment + "|" + variant;
+		}
+
+		public BlockPos pos() {
+			return new BlockPos(x, y, z);
+		}
+
+		/** What's in or on it, for messages: "Filled Map #12", "Diamond", "empty". */
+		public String contents() {
+			if (!variant.isEmpty()) return variant.replace("minecraft:", "").replace('_', ' ');
+			if (!equipment.isEmpty()) {
+				long pieces = java.util.Arrays.stream(equipment.split(",")).filter(s -> !s.isEmpty()).count();
+				return pieces == 0 ? "no armor" : pieces + " piece" + (pieces == 1 ? "" : "s") + " of gear";
+			}
+			if (item.isEmpty()) return "empty";
+			return ContainerWatcher.itemName(item) + (mapId >= 0 ? " #" + mapId : "");
+		}
+	}
+
+	/** An entity that's gone or changed since it was recorded. */
+	public static final class EntityChange {
+		public EntityRecord was;
+		/** What's there now, or null if it's gone. */
+		public EntityRecord now;
+		public long firstSeen;
+		public boolean live;
+		public List<String> suspects;
+
+		public String describe() {
+			if (now == null) return was.name + " removed (had " + was.contents() + ")";
+			if (!was.item.equals(now.item) || was.mapId != now.mapId) {
+				return now.item.isEmpty() ? was.name + " emptied (" + was.contents() + " taken)"
+						: was.name + ": " + was.contents() + " → " + now.contents();
+			}
+			if (was.rotation != now.rotation) return was.name + " rotated";
+			if (!was.equipment.equals(now.equipment)) return was.name + ": " + was.contents() + " → " + now.contents();
+			return was.name + " changed";
+		}
+	}
+
 	public static final class Event {
 		public long time;
 		public EventType type;
@@ -225,6 +289,11 @@ public final class Base {
 		events.add(new Event(type, text));
 		while (events.size() > Math.max(50, BIConfig.INSTANCE.maxEvents)) events.remove(0);
 		dirty = true;
+	}
+
+	/** Changed blocks plus changed item frames, armor stands and paintings. */
+	public int damageCount() {
+		return changes.size() + entityChanges.size();
 	}
 
 	public int count(Kind kind) {

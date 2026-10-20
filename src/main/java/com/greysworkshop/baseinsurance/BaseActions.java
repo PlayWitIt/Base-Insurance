@@ -18,7 +18,8 @@ public final class BaseActions {
 
 	/** Everything needed to put an accept back exactly as it was. */
 	private record Undo(String description, Map<Long, BlockState> baseline, Map<Long, Base.Change> changes,
-			Map<Long, Base.ContainerSnapshot> containers, String ignoredBlock) {}
+			Map<Long, Base.ContainerSnapshot> containers, String ignoredBlock,
+			Map<String, Base.EntityRecord> entities, Map<String, Base.EntityChange> entityChanges) {}
 
 	/** Undo history per base, for this session. */
 	private static final Map<Base, Deque<Undo>> history = new WeakHashMap<>();
@@ -31,6 +32,21 @@ public final class BaseActions {
 	}
 
 	private static int accept(Base base, Collection<Long> keys, String description, String ignoredBlock) {
+		return accept(base, keys, List.of(), description, ignoredBlock);
+	}
+
+	/** Accepts changed blocks and changed entities together, as one undoable step. */
+	private static int accept(Base base, Collection<Long> keys, Collection<String> entityKeys, String description, String ignoredBlock) {
+		Map<String, Base.EntityRecord> oldEntities = new HashMap<>();
+		Map<String, Base.EntityChange> oldEntityChanges = new HashMap<>();
+		for (String key : new ArrayList<>(entityKeys)) {
+			Base.EntityChange change = base.entityChanges.remove(key);
+			if (change == null) continue;
+			oldEntities.put(key, base.entities.get(key));
+			oldEntityChanges.put(key, change);
+			if (change.now == null) base.entities.remove(key);
+			else base.entities.put(key, change.now);
+		}
 		Map<Long, BlockState> oldBaseline = new HashMap<>();
 		Map<Long, Base.Change> oldChanges = new HashMap<>();
 		Map<Long, Base.ContainerSnapshot> oldContainers = new HashMap<>();
@@ -48,18 +64,25 @@ public final class BaseActions {
 			}
 			base.changes.remove(key);
 		}
-		if (oldChanges.isEmpty() && ignoredBlock == null) return 0;
+		int total = oldChanges.size() + oldEntityChanges.size();
+		if (total == 0 && ignoredBlock == null) return 0;
 		base.baselineDirty = true;
-		base.log(Base.EventType.ACCEPTED, description + " (" + oldChanges.size() + " block" + (oldChanges.size() == 1 ? "" : "s") + ")");
+		base.dirty = true;
+		base.log(Base.EventType.ACCEPTED, description + " (" + Alerts.plural(total, "change") + ")");
 		Deque<Undo> undo = history.computeIfAbsent(base, b -> new ArrayDeque<>());
-		undo.push(new Undo(description, oldBaseline, oldChanges, oldContainers, ignoredBlock));
+		undo.push(new Undo(description, oldBaseline, oldChanges, oldContainers, ignoredBlock, oldEntities, oldEntityChanges));
 		while (undo.size() > MAX_UNDO) undo.removeLast();
-		return oldChanges.size();
+		return total;
 	}
 
-	/** Accepts every current change. */
+	/** Accepts every current change, blocks and entities. */
 	public static int acceptAll(Base base) {
-		return accept(base, new ArrayList<>(base.changes.keySet()), "Accepted all changes");
+		return accept(base, new ArrayList<>(base.changes.keySet()), new ArrayList<>(base.entityChanges.keySet()), "Accepted all changes", null);
+	}
+
+	/** Accepts changed item frames, armor stands or paintings. */
+	public static int acceptEntities(Base base, Collection<String> keys, String description) {
+		return accept(base, List.of(), keys, description, null);
 	}
 
 	/** Accepts the changes within {@code radius} of {@code center}. */
@@ -102,6 +125,12 @@ public final class BaseActions {
 		}
 		base.changes.putAll(undo.changes());
 		base.containers.putAll(undo.containers());
+		for (Map.Entry<String, Base.EntityRecord> entry : undo.entities().entrySet()) {
+			if (entry.getValue() == null) base.entities.remove(entry.getKey());
+			else base.entities.put(entry.getKey(), entry.getValue());
+		}
+		base.entityChanges.putAll(undo.entityChanges());
+		base.dirty = true;
 		if (undo.ignoredBlock() != null) {
 			BIConfig.INSTANCE.ignoredBlocks.remove(undo.ignoredBlock());
 			BIConfig.save();

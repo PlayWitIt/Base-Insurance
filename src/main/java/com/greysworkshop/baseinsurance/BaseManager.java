@@ -108,6 +108,8 @@ public final class BaseManager {
 		if (base.changes == null) base.changes = new java.util.HashMap<>();
 		if (base.events == null) base.events = new ArrayList<>();
 		if (base.containers == null) base.containers = new java.util.HashMap<>();
+		if (base.entities == null) base.entities = new java.util.HashMap<>();
+		if (base.entityChanges == null) base.entityChanges = new java.util.HashMap<>();
 		base.loadedSections = new java.util.HashSet<>();
 		base.followUp = new ArrayList<>();
 		base.baseline = new Baseline();

@@ -12,7 +12,9 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPlayerBlockBreakEvents;
+import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.option.KeyBinding;
@@ -40,6 +42,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	public final Scanner scanner = new Scanner(manager);
 	public final ContainerWatcher watcher = new ContainerWatcher(manager);
 	public final WorldMap worldMap = new WorldMap();
+	public final EntityWatch entityWatch = new EntityWatch(manager, scanner);
 
 	private KeyBinding reportKey;
 	private KeyBinding overlayKey;
@@ -77,6 +80,16 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			return ActionResult.PASS;
 		});
 
+		// Hitting or using an item frame, armor stand or painting: its changes are yours.
+		AttackEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
+			if (world.isClient() && EntityWatch.watched(entity)) entityWatch.markSelf(entity);
+			return ActionResult.PASS;
+		});
+		UseEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
+			if (world.isClient() && EntityWatch.watched(entity)) entityWatch.markSelf(entity);
+			return ActionResult.PASS;
+		});
+
 		// Breaking a block can knock off what was attached to it (torches, doors), so neighbours count as yours too.
 		ClientPlayerBlockBreakEvents.AFTER.register((world, player, pos, state) -> markAround(pos));
 
@@ -88,6 +101,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
 			manager.saveAll(true);
 			scanner.reset();
+			entityWatch.reset();
 			manager.switchTo(null);
 			worldMap.close();
 		}));
@@ -174,6 +188,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 					.append(Text.literal(" or type /bi guide.").formatted(Formatting.GRAY)));
 		}
 		scanner.tick(client);
+		entityWatch.tick(client);
 		watcher.tick(client);
 		DamageLocator.tick(client);
 		worldMap.tick(client);

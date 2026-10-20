@@ -81,7 +81,7 @@ public class ReportScreen extends Screen {
 		int x = width / 2 - (tabs.length * (tabWidth + 4) - 4) / 2;
 		for (Tab t : tabs) {
 			Text label = Text.translatable("baseinsurance.report.tab." + t.name().toLowerCase());
-			if (t == Tab.DAMAGE && !base.changes.isEmpty()) label = label.copy().append(" (" + base.changes.size() + ")");
+			if (t == Tab.DAMAGE && base.damageCount() > 0) label = label.copy().append(" (" + base.damageCount() + ")");
 			ButtonWidget button = ButtonWidget.builder(label, b -> showTab(t.name())).dimensions(x, 28, tabWidth, 20).build();
 			button.active = t != tab;
 			addDrawableChild(button);
@@ -108,9 +108,9 @@ public class ReportScreen extends Screen {
 					if (confirmed) flash("Accepted " + BaseActions.acceptAll(base) + " changes · Undo is available");
 					client.setScreen(this);
 				}, Text.translatable("baseinsurance.report.accept.title"),
-						Text.translatable("baseinsurance.report.accept.message", base.changes.size(), base.name))))
+						Text.translatable("baseinsurance.report.accept.message", base.damageCount(), base.name))))
 				.dimensions(left + 2 * (w + 4), y, w, 20).build();
-		acceptAll.active = !base.changes.isEmpty();
+		acceptAll.active = base.damageCount() > 0;
 		addDrawableChild(acceptAll);
 		addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, b -> close()).dimensions(left + 3 * (w + 4), y, w, 20).build());
 
@@ -210,8 +210,11 @@ public class ReportScreen extends Screen {
 				List.of(new Action("Map", CYAN, () -> client.setScreen(MapScreen.centeredOn(base))))));
 		lines.add(blank());
 
-		if (base.changes.isEmpty()) {
+		if (base.damageCount() == 0) {
 			lines.add(text("✔ Everything matches the snapshot.", GREEN));
+		} else if (base.changes.isEmpty()) {
+			lines.add(line("⚠ " + Alerts.plural(base.entityChanges.size(), "item frame, painting or armor stand") + " changed", RED,
+					List.of(new Action("See damage", RED, () -> showTab("DAMAGE")))));
 		} else {
 			int live = 0;
 			for (Base.Change change : base.changes.values()) if (change.live) live++;
@@ -221,6 +224,10 @@ public class ReportScreen extends Screen {
 			lines.add(indented("■ " + base.count(Base.Kind.ADDED) + " placed by someone else", 0xFF000000 | Overlay.ADDED, 10));
 			lines.add(indented("■ " + base.count(Base.Kind.REPLACED) + " replaced", 0xFF000000 | Overlay.REPLACED, 10));
 			lines.add(indented((base.changes.size() - live) + " found when you came back, " + live + " happened while you were here.", GRAY, 10));
+			if (!base.entityChanges.isEmpty()) {
+				lines.add(indented("■ " + Alerts.plural(base.entityChanges.size(), "item frame, painting or armor stand") + " changed",
+						0xFF000000 | Overlay.ENTITY, 10));
+			}
 		}
 		lines.add(blank());
 
@@ -253,8 +260,8 @@ public class ReportScreen extends Screen {
 	/** Changes grouped by kind and block, each group with Find / Accept / Not damage. */
 	private List<Line> damage() {
 		List<Line> lines = new ArrayList<>();
-		if (base.changes.isEmpty()) {
-			lines.add(text("✔ No changed blocks.", GREEN));
+		if (base.damageCount() == 0) {
+			lines.add(text("✔ Nothing has changed.", GREEN));
 			return lines;
 		}
 		lines.add(text("Find walks you there with markers that show through walls. Accept makes it the new normal. "
@@ -313,7 +320,33 @@ public class ReportScreen extends Screen {
 			lines.add(blank());
 		}
 
-		if (me != null) {
+		if (!base.entityChanges.isEmpty()) {
+			List<String> allEntities = new ArrayList<>(base.entityChanges.keySet());
+			lines.add(new Line(Text.literal("Item frames, paintings & armor stands (" + allEntities.size() + ")"), ItemStack.EMPTY,
+					0xFF000000 | Overlay.ENTITY, 0, true,
+					List.of(new Action("Accept all", ACCEPT, () -> {
+						flash("Accepted " + BaseActions.acceptEntities(base, allEntities, "Accepted all entity changes") + " · Undo is available");
+						clearAndInit();
+					}))));
+			base.entityChanges.entrySet().stream()
+					.sorted(Comparator.comparingLong(e -> -e.getValue().firstSeen))
+					.forEach(e -> {
+						String key = e.getKey();
+						Base.EntityChange change = e.getValue();
+						ItemStack icon = entityIcon(change.was);
+						String text = change.describe() + " at " + Alerts.pos(change.was.pos()) + " · "
+								+ (change.live ? "live" : "found on return") + ", " + Alerts.ago(change.firstSeen);
+						lines.add(new Line(Text.literal(text), icon, WHITE, 8, false, List.of(
+								new Action("Find", CYAN, () -> findPos(change.was.pos(), change.was.name, icon)),
+								new Action("Accept", ACCEPT, () -> {
+									flash("Accepted " + BaseActions.acceptEntities(base, List.of(key), "Accepted " + change.describe()) + " · Undo is available");
+									clearAndInit();
+								}))));
+					});
+			lines.add(blank());
+		}
+
+		if (me != null && !base.changes.isEmpty()) {
 			lines.add(header("Nearest to you", GOLD));
 			base.changes.entrySet().stream()
 					.sorted(Comparator.comparingDouble(e -> BlockPos.fromLong(e.getKey()).getSquaredDistance(me)))
@@ -427,6 +460,15 @@ public class ReportScreen extends Screen {
 
 	// ---- Helpers ----
 
+	private static ItemStack entityIcon(Base.EntityRecord record) {
+		return switch (record.type) {
+			case "minecraft:glow_item_frame" -> new ItemStack(net.minecraft.item.Items.GLOW_ITEM_FRAME);
+			case "minecraft:armor_stand" -> new ItemStack(net.minecraft.item.Items.ARMOR_STAND);
+			case "minecraft:painting" -> new ItemStack(net.minecraft.item.Items.PAINTING);
+			default -> new ItemStack(net.minecraft.item.Items.ITEM_FRAME);
+		};
+	}
+
 	/** Containers on record whose block has since been removed or replaced. */
 	private List<Long> destroyedContainers() {
 		List<Long> result = new ArrayList<>();
@@ -488,7 +530,7 @@ public class ReportScreen extends Screen {
 		context.drawTextWithShadow(textRenderer, Text.literal("⚑ ").styled(s -> s.withColor(CYAN)).append(title), PAD, 10, GOLD);
 		int percent = base.snapshotPercent();
 		int badgeX = badge(context, width - PAD, "Snapshot " + percent + "%", percent == 100 ? GREEN : YELLOW);
-		badge(context, badgeX - 4, base.changes.isEmpty() ? "Intact" : "Damaged · " + base.changes.size(), base.changes.isEmpty() ? GREEN : RED);
+		badge(context, badgeX - 4, base.damageCount() == 0 ? "Intact" : "Damaged · " + base.damageCount(), base.damageCount() == 0 ? GREEN : RED);
 
 		// Content panel.
 		int bottom = listBottom();

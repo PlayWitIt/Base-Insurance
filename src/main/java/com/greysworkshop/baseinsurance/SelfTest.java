@@ -422,6 +422,58 @@ public final class SelfTest {
 						+ last + ")", reloaded.changes.isEmpty() && last.startsWith("Upgraded") && reloaded.snapshotPercent() == 0);
 			}
 			case 1950 -> {
+				log("Entity watch: an item frame with a diamond and an armor stand");
+				client.getServer().execute(() -> client.getServer().getPlayerManager().getPlayerList().get(0)
+						.requestTeleport(origin.getX() + 3.5, origin.getY(), origin.getZ() + 6.5));
+				server(client, w -> {
+					// Well away from the lava poured earlier in the test.
+					w.setBlockState(origin.add(7, 1, 8), Blocks.STONE.getDefaultState());
+					var frame = new net.minecraft.entity.decoration.ItemFrameEntity(w, origin.add(6, 1, 8), Direction.WEST);
+					frame.setHeldItemStack(new ItemStack(Items.DIAMOND));
+					w.spawnEntity(frame);
+					var stand = new net.minecraft.entity.decoration.ArmorStandEntity(w, origin.getX() + 4.5, origin.getY(), origin.getZ() + 8.5);
+					stand.equipStack(net.minecraft.entity.EquipmentSlot.HEAD, new ItemStack(Items.DIAMOND_HELMET));
+					w.spawnEntity(stand);
+				});
+			}
+			case 2000 -> {
+				for (var e : mod.manager.get("Test").entities.entrySet()) log("  entity record " + e.getKey() + ": " + e.getValue().detail());
+				long frames = mod.manager.get("Test").entities.keySet().stream().filter(k -> k.startsWith("minecraft:item_frame")).count();
+				long stands = mod.manager.get("Test").entities.keySet().stream().filter(k -> k.startsWith("minecraft:armor_stand")).count();
+				check("item frame and armor stand recorded (" + frames + " frame, " + stands + " stand)", frames == 1 && stands == 1);
+				log("A griefer takes the diamond out of the frame");
+				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.ITEM_FRAME, e -> true)
+						.forEach(f -> f.setHeldItemStack(ItemStack.EMPTY)));
+			}
+			case 2050 -> {
+				for (var e : mod.manager.get("Test").entities.entrySet()) log("  entity record " + e.getKey() + ": " + e.getValue().detail());
+				for (var e : mod.manager.get("Test").entityChanges.entrySet()) log("  entity change " + e.getKey() + ": " + e.getValue().describe());
+				client.world.getEntitiesByClass(net.minecraft.entity.decoration.ItemFrameEntity.class,
+						new net.minecraft.util.math.Box(origin).expand(12), e -> true)
+						.forEach(f -> log("  client frame " + EntityWatch.key(f) + " holds " + f.getHeldItemStack()));
+				var changes = mod.manager.get("Test").entityChanges.values();
+				String text = changes.stream().map(Base.EntityChange::describe).reduce("", (a, b) -> a + b + "; ");
+				check("emptied item frame reported (" + text + ")", changes.size() == 1 && text.contains("emptied"));
+				log("A griefer breaks the armor stand");
+				server(client, w -> w.getEntitiesByType(net.minecraft.entity.EntityType.ARMOR_STAND, e -> true)
+						.forEach(net.minecraft.entity.Entity::discard));
+			}
+			case 2120 -> {
+				var changes = mod.manager.get("Test").entityChanges.values();
+				for (var e : mod.manager.get("Test").entityChanges.entrySet()) log("  entity change " + e.getKey() + ": " + e.getValue().describe());
+				check("removed armor stand reported (" + changes.size() + " entity changes)",
+						changes.size() == 2 && changes.stream().anyMatch(c -> c.now == null && c.was.type.equals("minecraft:armor_stand")));
+				BaseActions.acceptAll(mod.manager.get("Test"));
+			}
+			case 2140 -> {
+				log("The player breaks the (now empty) frame themselves");
+				client.world.getEntitiesByClass(net.minecraft.entity.decoration.ItemFrameEntity.class,
+						new net.minecraft.util.math.Box(origin.add(6, 1, 8)).expand(1), e -> true)
+						.forEach(frame -> client.interactionManager.attackEntity(client.player, frame));
+			}
+			case 2220 -> check("own frame breaking isn't reported (" + mod.manager.get("Test").entityChanges.size() + " entity changes)",
+					mod.manager.get("Test").entityChanges.isEmpty());
+			case 2230 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

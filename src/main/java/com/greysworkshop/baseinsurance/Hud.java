@@ -36,7 +36,7 @@ public final class Hud {
 			}
 		}
 		if (BIConfig.INSTANCE.hudStatus && here != null) {
-			int count = here.changes.size();
+			int count = here.damageCount();
 			int percent = here.snapshotPercent();
 			if (count > 0 || Overlay.enabled) {
 				Text status = count == 0
