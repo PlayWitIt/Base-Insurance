@@ -1,0 +1,35 @@
+{
+	"key.category.baseinsurance.main": "Base Insurance",
+	"key.baseinsurance.report": "Open damage report",
+	"key.baseinsurance.overlay": "Toggle damage overlay",
+	"key.baseinsurance.build": "Toggle build mode",
+
+	"baseinsurance.hud.build_mode": "⚒ BUILD MODE: changes go into the snapshot",
+	"baseinsurance.hud.intact": "🛡 %s: intact",
+	"baseinsurance.hud.damage": "🛡 %s: %s blocks to fix",
+	"baseinsurance.hud.missing": "Missing: %s",
+	"baseinsurance.hud.added": "Placed by someone else: %s",
+	"baseinsurance.hud.replaced": "Should be %s (now %s)",
+
+	"baseinsurance.report.title": "Base Insurance: %s",
+	"baseinsurance.report.tab.overview": "Overview",
+	"baseinsurance.report.tab.blocks": "Blocks",
+	"baseinsurance.report.tab.containers": "Containers",
+	"baseinsurance.report.tab.rebuild": "Rebuild",
+	"baseinsurance.report.tab.timeline": "Timeline",
+	"baseinsurance.report.overlay": "Overlay",
+	"baseinsurance.report.accept": "Accept all...",
+	"baseinsurance.report.accept.title": "Accept all changes?",
+	"baseinsurance.report.accept.message": "The %s changed blocks in %s become the new normal and stop showing as damage. Do this if the changes were yours.",
+
+	"baseinsurance.config.title": "Base Insurance Settings",
+	"baseinsurance.config.enabled": "Mod enabled",
+	"baseinsurance.config.sounds": "Alert sounds",
+	"baseinsurance.config.live_alerts": "Live damage alerts",
+	"baseinsurance.config.player_alerts": "Player alerts",
+	"baseinsurance.config.all_clear": "\"All clear\" messages",
+	"baseinsurance.config.auto_overlay": "Auto overlay on damage",
+	"baseinsurance.config.overlay_fill": "Filled overlay boxes",
+	"baseinsurance.config.overlay_range": "Overlay range",
+	"baseinsurance.config.player_distance": "Player alert distance"
+}
