@@ -476,8 +476,8 @@ public final class SelfTest {
 			}
 			case 2220 -> check("own frame breaking isn't reported (" + mod.manager.get("Test").entityChanges.size() + " entity changes)",
 					mod.manager.get("Test").entityChanges.isEmpty());
-			case 2190 -> server(client, w -> {
-				// Some fresh damage for the Rebuild tab.
+			case 2150 -> server(client, w -> {
+				// Some fresh damage for the Rebuild tab (well before it opens, so a scan pass has seen it).
 				for (int x = 2; x <= 4; x++) w.setBlockState(origin.add(x, -1, 6), Blocks.AIR.getDefaultState());
 			});
 			case 2225 -> {
@@ -486,7 +486,10 @@ public final class SelfTest {
 				report.showTab("REBUILD");
 			}
 			case 2230 -> {
-				if (client.currentScreen instanceof ReportScreen report) report.testAction("Fetch with Container Peek");
+				if (client.currentScreen instanceof ReportScreen report) {
+					log("Rebuild tab: " + report.testDescribe() + " (changes: " + mod.manager.get("Test").changes.size() + ")");
+					report.testAction("Fetch with Container Peek");
+				}
 			}
 			case 2233 -> {
 				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json");

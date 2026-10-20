@@ -652,6 +652,20 @@ public class ReportScreen extends Screen {
 		return false;
 	}
 
+	/** Every row's text and actions, for the self-test log. */
+	public String testDescribe() {
+		StringBuilder sb = new StringBuilder();
+		for (Row row : rows) {
+			StringBuilder text = new StringBuilder();
+			row.text.accept((index, style, codePoint) -> {
+				text.appendCodePoint(codePoint);
+				return true;
+			});
+			sb.append(text).append(row.actions.isEmpty() ? "" : " " + row.actions.stream().map(Action::label).toList()).append(" | ");
+		}
+		return sb.toString();
+	}
+
 	/** Runs the first row action with this label; used by the self-test. */
 	public boolean testAction(String label) {
 		for (Row row : rows) {
