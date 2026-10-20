@@ -31,7 +31,7 @@ import java.util.Set;
  */
 public final class WorldMap {
 	public static final int TILE = 512;
-	private static final int MAX_LOADED_TILES = 64;
+	private static final int MAX_LOADED_TILES = 32;
 	private static final int SAVE_INTERVAL = 600;
 	private static final int RESCAN_INTERVAL = 100;
 
