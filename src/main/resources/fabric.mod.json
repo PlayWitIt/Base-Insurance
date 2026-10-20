@@ -4,12 +4,18 @@
 	"version": "${version}",
 	"name": "Base Insurance",
 	"description": "Snapshots your bases and tells you exactly what changed while you were away: broken blocks, raided chests, nearby players. Shows the damage in-world and helps you rebuild. Client-side only.",
-	"authors": ["greysworkshop"],
+	"authors": [
+		"greysworkshop"
+	],
 	"license": "MIT",
 	"environment": "client",
 	"entrypoints": {
-		"client": ["com.greysworkshop.baseinsurance.BaseInsuranceClient"],
-		"modmenu": ["com.greysworkshop.baseinsurance.ModMenuIntegration"]
+		"client": [
+			"com.greysworkshop.baseinsurance.BaseInsuranceClient"
+		],
+		"modmenu": [
+			"com.greysworkshop.baseinsurance.ModMenuIntegration"
+		]
 	},
 	"depends": {
 		"fabricloader": ">=0.18.0",
@@ -20,5 +26,6 @@
 	"suggests": {
 		"modmenu": "*",
 		"containerpeek": "*"
-	}
+	},
+	"icon": "assets/baseinsurance/icon.png"
 }
