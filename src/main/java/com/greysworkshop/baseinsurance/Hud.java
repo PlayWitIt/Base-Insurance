@@ -33,12 +33,25 @@ public final class Hud {
 				break;
 			}
 		}
-		if (BIConfig.INSTANCE.hudStatus && here != null && (!here.changes.isEmpty() || Overlay.enabled)) {
+		if (BIConfig.INSTANCE.hudStatus && here != null) {
 			int count = here.changes.size();
-			Text status = count == 0
-					? Text.translatable("baseinsurance.hud.intact", here.name)
-					: Text.translatable("baseinsurance.hud.damage", here.name, count);
-			drawCorner(context, font, status, y, count == 0 ? 0xFF55FF55 : 0xFFFF5555, right);
+			int percent = here.snapshotPercent();
+			if (count > 0 || Overlay.enabled) {
+				Text status = count == 0
+						? Text.translatable("baseinsurance.hud.intact", here.name)
+						: Text.translatable("baseinsurance.hud.damage", here.name, count);
+				drawCorner(context, font, status, y, count == 0 ? 0xFF55FF55 : 0xFFFF5555, right);
+				y += 11;
+			}
+			if (percent < 100) {
+				// Until the whole base has been seen up close, say so, with a little progress bar.
+				Text progress = Text.translatable("baseinsurance.hud.snapshot", here.name, percent);
+				drawCorner(context, font, progress, y, 0xFFFFD040, right);
+				int barWidth = font.getWidth(progress);
+				int barX = right ? context.getScaledWindowWidth() - 4 - barWidth : 4;
+				context.fill(barX, y + 10, barX + barWidth, y + 12, 0x60000000);
+				context.fill(barX, y + 10, barX + barWidth * percent / 100, y + 12, 0xFFFFD040);
+			}
 		}
 
 		if (Overlay.enabled && BIConfig.INSTANCE.aimInfo && client.currentScreen == null) drawAimInfo(context, font, client, manager);

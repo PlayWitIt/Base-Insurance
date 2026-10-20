@@ -54,6 +54,8 @@ public class SettingsScreen extends OptionsScreen {
 					r.slider("sound_volume", 0, 100, () -> c.soundVolume, v -> c.soundVolume = v, v -> v + "%");
 				}),
 				new Tab("detection", r -> {
+					r.slider("trust_radius", 8, 96, () -> c.trustRadius, v -> c.trustRadius = v,
+							v -> Text.translatable(P + ".blocks", v).getString());
 					r.slider("self_edit", 1, 60, () -> c.selfEditSeconds, v -> c.selfEditSeconds = v,
 							v -> Text.translatable(P + ".seconds", v).getString());
 					r.header("header.natural");

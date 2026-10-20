@@ -43,6 +43,50 @@ public final class Base {
 	public transient long awaySince;
 	public transient long arrivalStart;
 	public transient int arrivalChanges;
+	/** When this visit's arrival report went out; later findings in the same visit become a follow-up. */
+	public transient long lastArrivalReport;
+	public transient List<Change> followUp = new ArrayList<>();
+	public transient long followUpDue;
+	private transient long progressAt;
+	private transient int[] progress;
+
+	/**
+	 * {trusted, total} blocks: how much of the base has been seen up close. Cached for a second, as it walks
+	 * the whole snapshot.
+	 */
+	public int[] snapshotProgress() {
+		long now = System.currentTimeMillis();
+		if (progress != null && now - progressAt < 1000) return progress;
+		int trusted = 0, total = 0;
+		for (long key : sections()) {
+			int sx = ChunkSectionPos.unpackX(key), sy = ChunkSectionPos.unpackY(key), sz = ChunkSectionPos.unpackZ(key);
+			int x0 = Math.max(sx << 4, minX), x1 = Math.min((sx << 4) + 15, maxX);
+			int y0 = Math.max(sy << 4, minY), y1 = Math.min((sy << 4) + 15, maxY);
+			int z0 = Math.max(sz << 4, minZ), z1 = Math.min((sz << 4) + 15, maxZ);
+			total += (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+			Baseline.Section section = baseline.sections.get(key);
+			if (section == null || section.trusted.isEmpty()) continue;
+			if (x0 == sx << 4 && x1 == x0 + 15 && y0 == sy << 4 && y1 == y0 + 15 && z0 == sz << 4 && z1 == z0 + 15) {
+				trusted += section.trusted.cardinality();
+				continue;
+			}
+			for (int y = y0; y <= y1; y++) {
+				for (int z = z0; z <= z1; z++) {
+					for (int x = x0; x <= x1; x++) {
+						if (section.isTrusted(Baseline.index(x, y, z))) trusted++;
+					}
+				}
+			}
+		}
+		progress = new int[]{trusted, total};
+		progressAt = now;
+		return progress;
+	}
+
+	public int snapshotPercent() {
+		int[] p = snapshotProgress();
+		return p[1] == 0 ? 100 : (int) Math.min(100, Math.floor(100.0 * p[0] / p[1]));
+	}
 
 	public static final class Change {
 		/** Block state from the snapshot, as a block-state string like {@code minecraft:chest[facing=north]}. */

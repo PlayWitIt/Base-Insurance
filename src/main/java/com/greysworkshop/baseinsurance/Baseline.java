@@ -21,15 +21,30 @@ import java.util.zip.GZIPOutputStream;
 /**
  * The block snapshot of a base, stored per 16x16x16 chunk section as a palette of block states plus one
  * palette index per block. Sections made of a single block (like all air) skip the index array.
+ * <p>
+ * Each block also has a "trusted" bit: set once it has been seen up close (within the trust radius), where
+ * servers send real blocks. Untrusted blocks may hold whatever the server faked from a distance, so they're
+ * never reported as changed; the first close look replaces them with the truth.
  */
 public final class Baseline {
-	private static final int VERSION = 1;
+	/** Version 2 added trusted bits. Version 1 snapshots load as all-untrusted and heal themselves. */
+	private static final int VERSION = 2;
 
 	public static final class Section {
 		/** Palette entries can be null if a saved block no longer exists in the game. */
 		final List<BlockState> palette = new ArrayList<>();
 		/** Palette index per block, or null if every block is palette entry 0. */
 		short[] data;
+		/** Blocks whose snapshot value was seen up close. */
+		final java.util.BitSet trusted = new java.util.BitSet(4096);
+
+		public boolean isTrusted(int index) {
+			return trusted.get(index);
+		}
+
+		public void trust(int index) {
+			trusted.set(index);
+		}
 
 		public BlockState get(int index) {
 			return palette.get(data == null ? 0 : data[index]);
@@ -61,9 +76,13 @@ public final class Baseline {
 		return section == null ? null : section.get(index(pos.getX(), pos.getY(), pos.getZ()));
 	}
 
+	/** Sets a block's snapshot value as seen up close (so it's trusted). */
 	public void set(BlockPos pos, BlockState state) {
 		Section section = sections.get(ChunkSectionPos.asLong(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4));
-		if (section != null) section.set(index(pos.getX(), pos.getY(), pos.getZ()), state);
+		if (section == null) return;
+		int index = index(pos.getX(), pos.getY(), pos.getZ());
+		section.set(index, state);
+		section.trust(index);
 	}
 
 	public static Section capture(ClientWorld world, long key) {
@@ -108,6 +127,9 @@ public final class Baseline {
 				if (section.data != null) {
 					for (short s : section.data) out.writeShort(s);
 				}
+				long[] trusted = section.trusted.toLongArray();
+				out.writeShort(trusted.length);
+				for (long word : trusted) out.writeLong(word);
 			}
 		}
 		Files.move(temp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -118,7 +140,7 @@ public final class Baseline {
 		if (!Files.exists(file)) return baseline;
 		try (DataInputStream in = new DataInputStream(new GZIPInputStream(Files.newInputStream(file)))) {
 			int version = in.readInt();
-			if (version != VERSION) throw new IOException("Unknown snapshot version " + version);
+			if (version < 1 || version > VERSION) throw new IOException("Unknown snapshot version " + version);
 			int count = in.readInt();
 			for (int i = 0; i < count; i++) {
 				long key = in.readLong();
@@ -130,6 +152,11 @@ public final class Baseline {
 				if (in.readBoolean()) {
 					section.data = new short[4096];
 					for (int b = 0; b < 4096; b++) section.data[b] = in.readShort();
+				}
+				if (version >= 2) {
+					long[] words = new long[in.readUnsignedShort()];
+					for (int w = 0; w < words.length; w++) words[w] = in.readLong();
+					section.trusted.or(java.util.BitSet.valueOf(words));
 				}
 				baseline.sections.put(key, section);
 			}

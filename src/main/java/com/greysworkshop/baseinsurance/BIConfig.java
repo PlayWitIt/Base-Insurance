@@ -53,6 +53,11 @@ public final class BIConfig {
 	public int soundVolume = 100;
 
 	// ---- Detection ----
+	/**
+	 * Only blocks within this distance of you are snapshotted and compared. Servers often fake blocks further
+	 * away (anti-xray, anti-freecam); up close they have to send the real ones.
+	 */
+	public int trustRadius = 32;
 	/** How long a block you broke or placed counts as your own edit. */
 	public int selfEditSeconds = 15;
 	public boolean ignorePlants = true;

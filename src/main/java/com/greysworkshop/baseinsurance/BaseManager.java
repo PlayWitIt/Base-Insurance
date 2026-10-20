@@ -91,6 +91,7 @@ public final class BaseManager {
 		if (base.events == null) base.events = new ArrayList<>();
 		if (base.containers == null) base.containers = new java.util.HashMap<>();
 		base.loadedSections = new java.util.HashSet<>();
+		base.followUp = new ArrayList<>();
 		base.baseline = new Baseline();
 	}
 

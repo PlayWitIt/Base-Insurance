@@ -8,6 +8,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.util.math.Vec3d;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,6 +42,8 @@ public final class Scanner {
 	private final Map<Long, Integer> pendingApply = new HashMap<>();
 	private final Map<Base, List<Base.Change>> pendingLive = new HashMap<>();
 	private final Map<Base, Long> lastLiveAlert = new HashMap<>();
+	/** Sections that look hidden by the server, and the tick that started. */
+	private final Map<Long, Integer> hiddenSince = new HashMap<>();
 	private final Map<String, Long> lastPlayerAlert = new HashMap<>();
 	private int tick;
 	private int baseIndex;
@@ -70,6 +73,7 @@ public final class Scanner {
 
 	public void reset() {
 		chunkLoaded.clear();
+		hiddenSince.clear();
 		selfEdits.clear();
 		pendingApply.clear();
 		pendingLive.clear();
@@ -95,7 +99,7 @@ public final class Scanner {
 				base.loadedSections.clear();
 			}
 		}
-		if (active.isEmpty()) return;
+		if (active.isEmpty() || client.player == null) return;
 
 		applySelfEdits(world, active);
 		if (buildMode && BIConfig.INSTANCE.buildModeAutoOff && client.player != null) autoBuildModeOff(client, active);
@@ -114,44 +118,58 @@ public final class Scanner {
 		}
 
 		flushLiveAlerts();
+		flushFollowUps(active);
 		if (tick % 20 == 0) watchPlayers(client, active);
 	}
 
-	/** Compares one section; returns false if it wasn't loaded (and so cost nothing). */
+	/**
+	 * Compares one section; returns false if it was skipped for free (not loaded, or out of trust range).
+	 * Only blocks within the trust radius of you are looked at: that's where servers send the real thing.
+	 */
 	private boolean scanSection(MinecraftClient client, ClientWorld world, Base base, long key) {
 		int sx = ChunkSectionPos.unpackX(key);
 		int sy = ChunkSectionPos.unpackY(key);
 		int sz = ChunkSectionPos.unpackZ(key);
-		if (!world.isChunkLoaded(sx, sz) || !settled(sx, sz)) {
-			// Not loaded, or only just (re)loaded: wait. It counts as "returning" once it settles.
+		int x0 = Math.max(sx << 4, base.minX), x1 = Math.min((sx << 4) + 15, base.maxX);
+		int y0 = Math.max(sy << 4, base.minY), y1 = Math.min((sy << 4) + 15, base.maxY);
+		int z0 = Math.max(sz << 4, base.minZ), z1 = Math.min((sz << 4) + 15, base.maxZ);
+		Vec3d eye = client.player.getEyePos();
+		double radius = BIConfig.INSTANCE.trustRadius;
+		if (!world.isChunkLoaded(sx, sz) || !settled(sx, sz) || boxDistanceSq(eye, x0, y0, z0, x1, y1, z1) > radius * radius) {
+			// Not loaded, only just (re)loaded, or too far to trust: leave it. Coming back counts as "returning".
 			base.loadedSections.remove(key);
+			hiddenSince.remove(key);
 			return false;
 		}
 
 		Baseline.Section section = base.baseline.sections.get(key);
 		if (section == null) {
-			base.baseline.sections.put(key, Baseline.capture(world, key));
+			// First sight: take it as-is. The blocks are untrusted until the loop below sees them up close.
+			section = Baseline.capture(world, key);
+			base.baseline.sections.put(key, section);
 			base.baselineDirty = true;
-			base.loadedSections.add(key);
-			return true;
 		}
 
 		if (BIConfig.INSTANCE.smartTerrain) {
-			switch (checkSection(client, world, base, section, sx, sy, sz)) {
+			switch (checkSection(world, section, eye, radius, x0, y0, z0, x1, y1, z1)) {
 				case RECAPTURE -> {
-					// The snapshot caught this section while the server was hiding it: take it again.
-					base.baseline.sections.put(key, Baseline.capture(world, key));
-					base.baselineDirty = true;
-					clearChanges(base, sx, sy, sz);
+					// The snapshot caught this section while the server was hiding it: take the real blocks.
+					retrust(world, base, section, eye, radius, x0, y0, z0, x1, y1, z1);
 					base.loadedSections.add(key);
+					hiddenSince.remove(key);
 					return true;
 				}
 				case HIDDEN -> {
-					// The server is hiding this far-off section right now; wait until it's sent for real.
-					base.loadedSections.remove(key);
-					return true;
+					// Much of this section's terrain just turned to air: the server is hiding it. Wait, unless
+					// you've been standing right next to it for a while, in which case it's real (say, TNT).
+					int since = hiddenSince.computeIfAbsent(key, k -> tick);
+					boolean close = boxDistanceSq(eye, x0, y0, z0, x1, y1, z1) <= HIDDEN_CONFIRM_DISTANCE * HIDDEN_CONFIRM_DISTANCE;
+					if (!close || tick - since < HIDDEN_CONFIRM_TICKS) {
+						base.loadedSections.remove(key);
+						return true;
+					}
 				}
-				case OK -> {}
+				case OK -> hiddenSince.remove(key);
 			}
 		}
 
@@ -164,19 +182,31 @@ public final class Scanner {
 			base.arrivalChanges = 0;
 		}
 
-		int x0 = Math.max(sx << 4, base.minX), x1 = Math.min((sx << 4) + 15, base.maxX);
-		int y0 = Math.max(sy << 4, base.minY), y1 = Math.min((sy << 4) + 15, base.maxY);
-		int z0 = Math.max(sz << 4, base.minZ), z1 = Math.min((sz << 4) + 15, base.maxZ);
+		double radiusSq = radius * radius;
 		BlockPos.Mutable pos = new BlockPos.Mutable();
 		for (int y = y0; y <= y1; y++) {
 			for (int z = z0; z <= z1; z++) {
 				for (int x = x0; x <= x1; x++) {
+					double dx = x + 0.5 - eye.x, dy = y + 0.5 - eye.y, dz = z + 0.5 - eye.z;
+					if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
 					int index = Baseline.index(x, y, z);
 					BlockState was = section.get(index);
 					if (was == null) continue;
 					BlockState current = world.getBlockState(pos.set(x, y, z));
 					long posKey = pos.asLong();
 					Base.Change existing = base.changes.get(posKey);
+
+					if (!section.isTrusted(index)) {
+						// First close look at this block: whatever is here now is the truth.
+						if (was != current) section.set(index, current);
+						section.trust(index);
+						base.baselineDirty = true;
+						if (existing != null) {
+							base.changes.remove(posKey);
+							base.dirty = true;
+						}
+						continue;
+					}
 
 					if (ChangeFilter.same(was, current) || (BIConfig.INSTANCE.ignoreHidden && hidden(world, pos))) {
 						// Unchanged, or repaired.
@@ -187,8 +217,8 @@ public final class Scanner {
 						continue;
 					}
 
-					boolean nearMe = wasLoaded && BIConfig.INSTANCE.ignoreNearMe > 0 && client.player != null
-							&& client.player.squaredDistanceTo(x + 0.5, y + 0.5, z + 0.5) <= BIConfig.INSTANCE.ignoreNearMe * BIConfig.INSTANCE.ignoreNearMe;
+					boolean nearMe = wasLoaded && BIConfig.INSTANCE.ignoreNearMe > 0
+							&& dx * dx + dy * dy + dz * dz <= BIConfig.INSTANCE.ignoreNearMe * BIConfig.INSTANCE.ignoreNearMe;
 					// Natural terrain where the snapshot had air is the real world arriving, not someone building.
 					boolean terrainArrived = BIConfig.INSTANCE.smartTerrain && was.isAir() && ChangeFilter.isTerrain(current, false);
 					if (buildMode || nearMe || terrainArrived || selfEdits.containsKey(posKey)) {
@@ -230,27 +260,37 @@ public final class Scanner {
 		return true;
 	}
 
+	private static double boxDistanceSq(Vec3d p, int x0, int y0, int z0, int x1, int y1, int z1) {
+		double dx = Math.max(0, Math.max(x0 - p.x, p.x - (x1 + 1)));
+		double dy = Math.max(0, Math.max(y0 - p.y, p.y - (y1 + 1)));
+		double dz = Math.max(0, Math.max(z0 - p.z, p.z - (z1 + 1)));
+		return dx * dx + dy * dy + dz * dz;
+	}
+
 	private enum SectionCheck { OK, RECAPTURE, HIDDEN }
 
-	/** Sections are only judged as hidden by the server while you're at least this far from them. */
-	private static final double HIDDEN_MIN_DISTANCE = 32;
+	/** A section that looks hidden is accepted as really changed after you've been this close for this long. */
+	private static final double HIDDEN_CONFIRM_DISTANCE = 12;
+	private static final int HIDDEN_CONFIRM_TICKS = 200;
 
 	/**
-	 * Spots servers that hide underground terrain (sending air until you're close): a section that was mostly
-	 * air in the snapshot but is now mostly terrain was snapshotted while hidden; a far-off section whose blocks
-	 * have mostly turned to air is being hidden right now.
+	 * Spots servers that hide terrain by sending air. Among trusted, in-range blocks: if much of what was air in
+	 * the snapshot is now natural terrain, the snapshot was taken while hidden; if much of what was solid is now
+	 * air, the server is hiding it right now.
 	 */
-	private static SectionCheck checkSection(MinecraftClient client, ClientWorld world, Base base, Baseline.Section section,
-			int sx, int sy, int sz) {
-		int x0 = Math.max(sx << 4, base.minX), x1 = Math.min((sx << 4) + 15, base.maxX);
-		int y0 = Math.max(sy << 4, base.minY), y1 = Math.min((sy << 4) + 15, base.maxY);
-		int z0 = Math.max(sz << 4, base.minZ), z1 = Math.min((sz << 4) + 15, base.maxZ);
+	private static SectionCheck checkSection(ClientWorld world, Baseline.Section section, Vec3d eye, double radius,
+			int x0, int y0, int z0, int x1, int y1, int z1) {
 		int total = 0, appeared = 0, solidBefore = 0, vanished = 0;
+		double radiusSq = radius * radius;
 		BlockPos.Mutable pos = new BlockPos.Mutable();
 		for (int y = y0; y <= y1; y++) {
 			for (int z = z0; z <= z1; z++) {
 				for (int x = x0; x <= x1; x++) {
-					BlockState was = section.get(Baseline.index(x, y, z));
+					double dx = x + 0.5 - eye.x, dy = y + 0.5 - eye.y, dz = z + 0.5 - eye.z;
+					if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
+					int index = Baseline.index(x, y, z);
+					if (!section.isTrusted(index)) continue;
+					BlockState was = section.get(index);
 					if (was == null) continue;
 					total++;
 					BlockState current = world.getBlockState(pos.set(x, y, z));
@@ -264,18 +304,28 @@ public final class Scanner {
 			}
 		}
 		if (total > 0 && appeared >= 64 && appeared * 4 >= total) return SectionCheck.RECAPTURE;
-		if (solidBefore >= 64 && vanished * 2 >= solidBefore && client.player != null) {
-			double cx = (sx << 4) + 8, cy = (sy << 4) + 8, cz = (sz << 4) + 8;
-			if (client.player.squaredDistanceTo(cx, cy, cz) > HIDDEN_MIN_DISTANCE * HIDDEN_MIN_DISTANCE) return SectionCheck.HIDDEN;
-		}
+		if (solidBefore >= 64 && vanished * 2 >= solidBefore) return SectionCheck.HIDDEN;
 		return SectionCheck.OK;
 	}
 
-	private static void clearChanges(Base base, int sx, int sy, int sz) {
-		if (base.changes.isEmpty()) return;
-		boolean removed = base.changes.keySet().removeIf(key -> BlockPos.unpackLongX(key) >> 4 == sx
-				&& BlockPos.unpackLongY(key) >> 4 == sy && BlockPos.unpackLongZ(key) >> 4 == sz);
-		if (removed) base.dirty = true;
+	/** Takes the current blocks as the truth for every in-range block of a section, and clears their changes. */
+	private static void retrust(ClientWorld world, Base base, Baseline.Section section, Vec3d eye, double radius,
+			int x0, int y0, int z0, int x1, int y1, int z1) {
+		double radiusSq = radius * radius;
+		BlockPos.Mutable pos = new BlockPos.Mutable();
+		for (int y = y0; y <= y1; y++) {
+			for (int z = z0; z <= z1; z++) {
+				for (int x = x0; x <= x1; x++) {
+					double dx = x + 0.5 - eye.x, dy = y + 0.5 - eye.y, dz = z + 0.5 - eye.z;
+					if (dx * dx + dy * dy + dz * dz > radiusSq) continue;
+					int index = Baseline.index(x, y, z);
+					section.set(index, world.getBlockState(pos.set(x, y, z)));
+					section.trust(index);
+					if (base.changes.remove(pos.asLong()) != null) base.dirty = true;
+				}
+			}
+		}
+		base.baselineDirty = true;
 	}
 
 	/**
@@ -295,11 +345,17 @@ public final class Scanner {
 		return result;
 	}
 
+	/** Arrival findings within this long of the last report are added to a follow-up instead of a new report. */
+	private static final long VISIT_WINDOW = 120_000;
+	/** A follow-up goes out once nothing new has been found for this long. */
+	private static final long FOLLOW_UP_QUIET = 15_000;
+
 	private void finishPass(Base base) {
 		long now = System.currentTimeMillis();
 		if (base.loadedSections.isEmpty()) return;
 		// Saving lastSeen every second would rewrite the file constantly; once a minute is plenty.
 		if (now - base.lastSeen > 60_000) base.dirty = true;
+		long previousSeen = base.lastSeen;
 		base.lastSeen = now;
 
 		if (!base.arriving) return;
@@ -308,28 +364,67 @@ public final class Scanner {
 
 		if (base.arrivalChanges > 0) {
 			List<Base.Change> found = new ArrayList<>();
-			int destroyedContainers = 0;
-			for (Map.Entry<Long, Base.Change> entry : base.changes.entrySet()) {
-				Base.Change change = entry.getValue();
-				if (change.live || change.firstSeen < base.arrivalStart) continue;
-				found.add(change);
-				if (base.containers.containsKey(entry.getKey()) && change.kind() != Base.Kind.ADDED) destroyedContainers++;
+			for (Base.Change change : base.changes.values()) {
+				if (!change.live && change.firstSeen >= base.arrivalStart) found.add(change);
 			}
-			String summary = found.size() + " blocks changed: " + Alerts.summarize(found);
-			if (destroyedContainers > 0) summary += ". " + destroyedContainers + " container(s) destroyed";
-			base.log(Base.EventType.AWAY_DAMAGE, "While you were away (since " + Alerts.time(since) + "): " + summary);
-			if (BIConfig.INSTANCE.arrivalReports) {
-				Alerts.alert(Text.empty()
-						.append(Text.literal("⚠ " + base.name + " changed while you were away! ").formatted(Formatting.RED, Formatting.BOLD))
-						.append(Text.literal(summary + ". ").formatted(Formatting.YELLOW))
-						.append(Alerts.reportLink(base)), true);
-				if (BIConfig.INSTANCE.autoOverlay) Overlay.enabled = true;
+			if (found.isEmpty()) return;
+			if (now - base.lastArrivalReport < VISIT_WINDOW) {
+				// Still the same visit: fold these into one follow-up rather than another big report.
+				base.followUp.addAll(found);
+				base.followUpDue = now + FOLLOW_UP_QUIET;
+				base.lastArrivalReport = now;
+				return;
 			}
-		} else if (now - since >= BIConfig.INSTANCE.allClearMinAwayMinutes * 60_000L && base.changes.isEmpty()) {
+			base.lastArrivalReport = now;
+			reportArrival(base, found, since);
+		} else if (now - since >= BIConfig.INSTANCE.allClearMinAwayMinutes * 60_000L && base.changes.isEmpty()
+				&& now - previousSeen > 5_000) {
 			if (BIConfig.INSTANCE.allClearMessages) {
-				Alerts.alert(Text.literal("✔ " + base.name + " is untouched since " + Alerts.time(since) + ".").formatted(Formatting.GREEN), false);
+				Alerts.alert(Text.literal("✔ " + base.name + " looks untouched since " + Alerts.time(since) + ".").formatted(Formatting.GREEN), false);
 			}
 			base.log(Base.EventType.ALL_CLEAR, "Checked on return: untouched since " + Alerts.time(since));
+		}
+	}
+
+	private void reportArrival(Base base, List<Base.Change> found, long since) {
+		int destroyedContainers = 0;
+		for (Map.Entry<Long, Base.Change> entry : base.changes.entrySet()) {
+			if (found.contains(entry.getValue()) && base.containers.containsKey(entry.getKey())
+					&& entry.getValue().kind() != Base.Kind.ADDED) destroyedContainers++;
+		}
+		String summary = found.size() + " blocks changed: " + Alerts.summarize(found);
+		if (destroyedContainers > 0) summary += ". " + destroyedContainers + " container(s) destroyed";
+		// If you were at the base a moment ago, these were just found on a part you hadn't looked at yet.
+		boolean away = System.currentTimeMillis() - since > 60_000;
+		base.log(Base.EventType.AWAY_DAMAGE, (away ? "While you were away (since " + Alerts.time(since) + "): " : "Found: ") + summary);
+		if (BIConfig.INSTANCE.arrivalReports) {
+			String headline = away ? "⚠ " + base.name + " changed while you were away! " : "⚠ Changes found in " + base.name + ": ";
+			Alerts.alert(Text.empty()
+					.append(Text.literal(headline).formatted(Formatting.RED, Formatting.BOLD))
+					.append(Text.literal(summary + ". ").formatted(Formatting.YELLOW))
+					.append(Alerts.reportLink(base)), true);
+			if (BIConfig.INSTANCE.autoOverlay) Overlay.enabled = true;
+		}
+	}
+
+	/** Sends a visit's follow-up once things have gone quiet. */
+	private void flushFollowUps(List<Base> active) {
+		long now = System.currentTimeMillis();
+		for (Base base : active) {
+			if (base.followUp.isEmpty() || now < base.followUpDue) continue;
+			List<Base.Change> found = new ArrayList<>(base.followUp);
+			base.followUp.clear();
+			// Some may have been repaired or turned out to be fake in the meantime.
+			found.removeIf(change -> !base.changes.containsValue(change));
+			if (found.isEmpty()) continue;
+			String summary = found.size() + " more: " + Alerts.summarize(found);
+			base.log(Base.EventType.AWAY_DAMAGE, "Found while looking around: " + summary);
+			if (BIConfig.INSTANCE.arrivalReports) {
+				Alerts.alert(Text.empty()
+						.append(Text.literal("⚠ " + base.name + ": ").formatted(Formatting.RED))
+						.append(Text.literal(summary + ". ").formatted(Formatting.YELLOW))
+						.append(Alerts.reportLink(base)), false);
+			}
 		}
 	}
 

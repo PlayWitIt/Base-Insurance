@@ -153,9 +153,12 @@ public class ReportScreen extends Screen {
 		lines.add(text("▣ " + base.containers.size() + " containers on record"
 				+ (destroyed > 0 ? ", " + destroyed + " destroyed" : "")
 				+ (thefts > 0 ? ", " + thefts + " theft report(s)" : "") + ".", destroyed + thefts > 0 ? RED : WHITE));
-		int captured = base.baseline.sections.size(), total = base.sections().size();
-		if (captured < total) {
-			lines.add(indented("Snapshot " + (100 * captured / total) + "% complete: walk around the edges of the base to capture the rest.", YELLOW, 10));
+		int percent = base.snapshotPercent();
+		if (percent < 100) {
+			lines.add(indented("Snapshot " + percent + "% seen up close. Walk around the base (within "
+					+ BIConfig.INSTANCE.trustRadius + " blocks of every part) to finish it; unseen parts can't be checked yet.", YELLOW, 10));
+		} else {
+			lines.add(indented("Snapshot complete: every block has been seen up close.", GREEN, 10));
 		}
 		lines.add(blank());
 

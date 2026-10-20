@@ -266,6 +266,38 @@ public final class SelfTest {
 						hide.changes.size() >= 4);
 			}
 			case 1140 -> {
+				log("Trust radius: a big base, changed far from the player");
+				client.player.networkHandler.sendChatCommand("bi delete Big confirm");
+				client.player.networkHandler.sendChatCommand("bi create Big 64 2 4");
+			}
+			case 1180 -> {
+				Base big = mod.manager.get("Big");
+				int percent = big.snapshotPercent();
+				check("snapshot progress is partial for a base bigger than the trust radius (" + percent + "%)", percent > 0 && percent < 100);
+				server(client, w -> {
+					w.setBlockState(origin.add(50, 0, 0), Blocks.COBBLESTONE.getDefaultState());
+					w.setBlockState(origin.add(52, -1, 0), Blocks.AIR.getDefaultState());
+				});
+			}
+			case 1240 -> {
+				check("changes far outside the trust radius aren't reported (" + mod.manager.get("Big").changes.size() + ")",
+						mod.manager.get("Big").changes.isEmpty());
+				client.getServer().execute(() -> client.getServer().getPlayerManager().getPlayerList().get(0)
+						.requestTeleport(origin.getX() + 46.5, origin.getY(), origin.getZ() + 0.5));
+			}
+			case 1300 -> {
+				check("first close look adopts what's there without alerts (" + mod.manager.get("Big").changes.size() + ")",
+						mod.manager.get("Big").changes.isEmpty());
+				server(client, w -> w.setBlockState(origin.add(50, -1, 3), Blocks.AIR.getDefaultState()));
+			}
+			case 1350 -> {
+				check("once seen up close, a block is protected: change detected (" + mod.manager.get("Big").changes.size() + ")",
+						mod.manager.get("Big").changes.size() == 1);
+				aimAt(client, origin.add(50, -1, 3));
+				Overlay.enabled = true;
+			}
+			case 1365 -> screenshot(client, "10_trust_hud");
+			case 1380 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");
