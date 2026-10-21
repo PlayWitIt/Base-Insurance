@@ -204,5 +204,7 @@
 	"baseinsurance.hud.snapshot_unseen": "⚑ %s: snapshot %s%% · unseen part %sm %s",
 	"baseinsurance.hud.snapshot_here": "⚑ %s: snapshot %s%% · look around here",
 	"baseinsurance.config.friends_note": "Friends never set off player alerts and aren't named as suspects when something breaks. On the minimap they're green dots.",
-	"baseinsurance.config.friends_nn": "Naughty or Nice adds its friends here by itself: everyone in a circle marked \"Trusted at my bases\" (and the Nice list, if that's on there). Change them in Naughty or Nice (press N)."
+	"baseinsurance.config.friends_nn": "Naughty or Nice adds its friends here by itself: friends whose friend type is marked \"Trusted at my bases\" (and the Nice list, if that's on there). Change them in Naughty or Nice (press N).",
+	"baseinsurance.config.check_updates": "Tell me about updates",
+	"baseinsurance.config.check_updates.desc": "Once per game session, a note in chat when a newer version is out on GitHub, with a download link. Nothing installs by itself."
 }

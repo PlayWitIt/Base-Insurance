@@ -154,6 +154,7 @@ public class SettingsScreen extends OptionsScreen {
 					r.slider("max_events", 100, 2000, () -> c.maxEvents, v -> c.maxEvents = v / 50 * 50,
 							v -> Text.translatable(P + ".events", v / 50 * 50).getString());
 					r.button("open_folder", () -> Util.getOperatingSystem().open(BIConfig.dir()));
+					r.toggle("check_updates", () -> c.checkUpdates, v -> c.checkUpdates = v);
 				}));
 	}
 

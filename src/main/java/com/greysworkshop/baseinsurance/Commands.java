@@ -100,7 +100,14 @@ public final class Commands {
 				.then(literal("friend")
 						.then(literal("add").then(argument("player", word()).suggests(players).executes(c -> friend(c, true))))
 						.then(literal("remove").then(argument("player", word()).suggests(friends).executes(c -> friend(c, false))))
-						.then(literal("list").executes(Commands::friendList))));
+						.then(literal("list").executes(Commands::friendList)))
+				.then(literal("update").then(literal("skip").then(argument("version", word()).executes(c -> {
+					BIConfig.INSTANCE.skippedVersion = getString(c, "version");
+					BIConfig.save();
+					c.getSource().sendFeedback(Text.literal("You won't be told about " + BIConfig.INSTANCE.skippedVersion
+							+ " again. Newer versions still get a note.").formatted(Formatting.GRAY));
+					return 1;
+				})))));
 	}
 
 	/** What the map is doing, to find out why it might be blank. */

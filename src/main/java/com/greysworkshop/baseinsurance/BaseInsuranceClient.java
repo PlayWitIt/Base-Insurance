@@ -193,6 +193,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	}
 
 	private void tick(MinecraftClient client) {
+		UpdateCheck.tick(client);
 		if (pendingScreen != null) {
 			client.setScreen(pendingScreen);
 			pendingScreen = null;

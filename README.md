@@ -46,11 +46,15 @@ server and dimension, so it keeps growing every time you play.
 ## Friends
 Friends never set off player alerts and aren't named as suspects when something in a base breaks; on the minimap
 they're green dots. Settings → **Friends** lists them: add anyone by name, remove with ✖. With Naughty or Nice, its
-friends in circles marked "Trusted at my bases" (and its Nice list, unless that's turned off there) are added by
+friends whose friend type is marked "Trusted at my bases" (and its Nice list, unless that's turned off there) are added by
 themselves, marked with where they came from. `/bi friend add|remove|list` works too.
 
 Everything Base Insurance does while the game handles a packet (chunks loading and unloading) is guarded, so an error
 in it is logged and skipped instead of disconnecting you.
+
+## Updates
+Once per game session the mod says in chat if a newer version is out on GitHub, with a download link. Nothing
+installs by itself; turn it off under Settings → Data.
 
 All `/bi` commands are client-side and never reach the server.
 

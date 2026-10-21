@@ -133,6 +133,10 @@ public final class BIConfig {
 	/** Extra block ids to ignore changes to, e.g. "minecraft:cobblestone". */
 	public List<String> ignoredBlocks = new ArrayList<>();
 	public int maxEvents = 500;
+	/** Say when a newer version is out on GitHub (once per game session). */
+	public boolean checkUpdates = true;
+	/** A version you said not to be told about again. */
+	public String skippedVersion = "";
 	/** Whether the "new here? open the guide" message has been shown. */
 	public boolean seenGuide = false;
 
@@ -164,6 +168,7 @@ public final class BIConfig {
 			if (loaded != null) {
 				if (loaded.friends == null) loaded.friends = new ArrayList<>();
 				if (loaded.friendNotes == null) loaded.friendNotes = new java.util.HashMap<>();
+				if (loaded.skippedVersion == null) loaded.skippedVersion = "";
 				if (loaded.ignoredBlocks == null) loaded.ignoredBlocks = new ArrayList<>();
 				if (loaded.alertStyle == null) loaded.alertStyle = AlertStyle.CHAT;
 				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;
