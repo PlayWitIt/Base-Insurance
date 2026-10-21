@@ -41,6 +41,7 @@ java {
 // The scripted self-test is for development only.
 jar {
 	exclude 'com/greysworkshop/baseinsurance/SelfTest*'
+	exclude 'com/greysworkshop/baseinsurance/MapTest*'
 }
 
 loom {
@@ -49,6 +50,12 @@ loom {
 			client()
 			name = "Self Test"
 			vmArgs "-Dbaseinsurance.selftest=true", "-Xmx1536m"
+			runDir "run"
+		}
+		mapTest {
+			client()
+			name = "Map Test"
+			vmArgs "-Dbaseinsurance.maptest=true", "-Xmx1536m"
 			runDir "run"
 		}
 	}

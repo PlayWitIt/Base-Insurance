@@ -78,7 +78,7 @@ public class GuideScreen extends Screen {
 			}
 			y += 6;
 		}
-		String keys = "Keys: M opens the map. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
+		String keys = "Keys: M opens the map; - and = zoom the minimap. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
 				+ "Everything stays on your computer; /bi commands are never sent to the server.";
 		for (OrderedText line : textRenderer.wrapLines(Text.literal(keys), panelWidth)) {
 			context.drawTextWithShadow(textRenderer, line, left, y, CYAN);

@@ -107,19 +107,40 @@ public final class BIConfig {
 	public Corner hudCorner = Corner.TOP_LEFT;
 
 	// ---- Map ----
+	/** The explored map in a corner of the screen while you play. */
+	public boolean minimap = true;
+	/** Minimap width and height, in GUI pixels. */
+	public int minimapSize = 112;
+	/** Minimap screen pixels per block. */
+	public double minimapZoom = 1;
+	/** Turn the minimap so the way you face is always up (otherwise north is up). */
+	public boolean minimapRotate = false;
+	public Corner minimapCorner = Corner.TOP_RIGHT;
+	public boolean minimapCoords = true;
+	public boolean minimapPlayers = true;
 	public boolean recordMap = true;
 	public int mapSpeed = 6;
 	public boolean mapDamageDots = true;
 	public boolean mapGrid = true;
+	/** Pins other mods put on the map, such as where Naughty or Nice last saw players. */
+	public boolean mapPins = true;
 
 	// ---- Friends & data ----
 	/** Players who never trigger alerts or count as suspects (case-insensitive). */
 	public List<String> friends = new ArrayList<>();
+	/** Where friends came from, by lower-case name, when another mod added them ("Naughty or Nice · Close friends"). */
+	public java.util.Map<String, String> friendNotes = new java.util.HashMap<>();
 	/** Extra block ids to ignore changes to, e.g. "minecraft:cobblestone". */
 	public List<String> ignoredBlocks = new ArrayList<>();
 	public int maxEvents = 500;
 	/** Whether the "new here? open the guide" message has been shown. */
 	public boolean seenGuide = false;
+
+	/** Notes where a friend came from (another mod), or clears it with null. Called by Naughty or Nice. */
+	public static void noteFriend(String name, String note) {
+		if (note == null) INSTANCE.friendNotes.remove(name.toLowerCase(java.util.Locale.ROOT));
+		else INSTANCE.friendNotes.put(name.toLowerCase(java.util.Locale.ROOT), note);
+	}
 
 	public boolean isFriend(String name) {
 		for (String friend : friends) {
@@ -142,9 +163,13 @@ public final class BIConfig {
 			BIConfig loaded = GSON.fromJson(reader, BIConfig.class);
 			if (loaded != null) {
 				if (loaded.friends == null) loaded.friends = new ArrayList<>();
+				if (loaded.friendNotes == null) loaded.friendNotes = new java.util.HashMap<>();
 				if (loaded.ignoredBlocks == null) loaded.ignoredBlocks = new ArrayList<>();
 				if (loaded.alertStyle == null) loaded.alertStyle = AlertStyle.CHAT;
 				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;
+				if (loaded.minimapCorner == null) loaded.minimapCorner = Corner.TOP_RIGHT;
+				if (!(loaded.minimapZoom >= Minimap.MIN_ZOOM && loaded.minimapZoom <= Minimap.MAX_ZOOM)) loaded.minimapZoom = 1;
+				loaded.minimapSize = Math.max(64, Math.min(256, loaded.minimapSize));
 				INSTANCE = loaded;
 			}
 		} catch (IOException | RuntimeException e) {

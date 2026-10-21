@@ -48,6 +48,9 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	private KeyBinding overlayKey;
 	private KeyBinding buildKey;
 	private KeyBinding mapKey;
+	private KeyBinding minimapKey;
+	private KeyBinding zoomInKey;
+	private KeyBinding zoomOutKey;
 	private Screen pendingScreen;
 	private int saveTimer;
 	private int welcomeTimer;
@@ -62,11 +65,16 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		overlayKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.overlay", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		buildKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.build", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		mapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.map", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_M, category));
+		minimapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
+		zoomInKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap_in", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, category));
+		zoomOutKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap_out", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_MINUS, category));
 
-		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
+		// These run while the game handles a packet: an error escaping them would disconnect you, so none can.
+		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> safely("a chunk loading", () -> {
 			worldMap.onChunkLoad(chunk.getPos());
 			scanner.onChunkLoad(chunk.getPos());
-		});
+		}));
+		ClientChunkEvents.CHUNK_UNLOAD.register((world, chunk) -> safely("a chunk unloading", () -> worldMap.onChunkUnload(chunk.getPos())));
 
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> Commands.register(dispatcher));
 
@@ -95,7 +103,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> watcher.onScreenOpened(screen));
 
-		ClientTickEvents.END_CLIENT_TICK.register(this::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(client -> safely("ticking", () -> tick(client)));
 
 		// Disconnect fires on the network thread; do the work on the game thread.
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() -> {
@@ -110,6 +118,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			worldMap.save();
 		});
 
+		HudElementRegistry.addLast(Identifier.of(MOD_ID, "minimap"), Minimap::render);
 		HudElementRegistry.addLast(Identifier.of(MOD_ID, "hud"), (context, tickCounter) -> Hud.render(context, tickCounter, manager, scanner));
 		// After chat, so markers aren't hidden behind recent messages.
 		HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, Identifier.of(MOD_ID, "damage_locator"), DamageLocator::renderHud);
@@ -123,6 +132,26 @@ public class BaseInsuranceClient implements ClientModInitializer {
 				LOGGER.error("Self-test not available", e);
 			}
 		}
+		if (Boolean.getBoolean("baseinsurance.maptest")) {
+			try {
+				Class.forName("com.greysworkshop.baseinsurance.MapTest").getMethod("start").invoke(null);
+			} catch (ReflectiveOperationException e) {
+				LOGGER.error("Map test not available", e);
+			}
+		}
+	}
+
+	public static void toggleMinimap(MinecraftClient client) {
+		BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
+		BIConfig.save();
+		if (client.player != null) client.player.sendMessage(Text.literal("Minimap " + (BIConfig.INSTANCE.minimap ? "ON" : "OFF")), true);
+	}
+
+	private static void zoomMinimap(MinecraftClient client, int steps) {
+		if (!BIConfig.INSTANCE.minimap) return;
+		double zoom = Minimap.zoom(steps);
+		String text = zoom >= 1 ? (int) zoom + " px per block" : (int) Math.round(1 / zoom) + " blocks per px";
+		if (client.player != null) client.player.sendMessage(Text.literal("Minimap zoom: " + text), true);
 	}
 
 	private void markAround(BlockPos pos) {
@@ -151,6 +180,18 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		return best;
 	}
 
+	/** Errors already logged, so each is logged once. */
+	private final java.util.Set<String> logged = new java.util.HashSet<>();
+
+	/** Runs a hook; an error in it is logged (once) and skipped, never passed on to the game. */
+	private void safely(String what, Runnable work) {
+		try {
+			work.run();
+		} catch (RuntimeException | LinkageError | StackOverflowError e) {
+			if (logged.add(what + "|" + e)) LOGGER.error("Base Insurance caught an error in {} (skipped it, play goes on)", what, e);
+		}
+	}
+
 	private void tick(MinecraftClient client) {
 		if (pendingScreen != null) {
 			client.setScreen(pendingScreen);
@@ -171,6 +212,9 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		while (mapKey.wasPressed()) {
 			if (client.world != null) client.setScreen(new MapScreen());
 		}
+		while (minimapKey.wasPressed()) toggleMinimap(client);
+		while (zoomInKey.wasPressed()) zoomMinimap(client, 1);
+		while (zoomOutKey.wasPressed()) zoomMinimap(client, -1);
 		while (buildKey.wasPressed()) {
 			scanner.buildMode = !scanner.buildMode;
 			if (client.player != null) client.player.sendMessage(Text.literal("Build mode " + (scanner.buildMode ? "ON" : "OFF")), true);

@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayers;
 import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexRendering;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
@@ -79,18 +80,28 @@ public final class Overlay {
 		if (boxes.isEmpty()) return;
 
 		MatrixStack matrices = context.matrices();
-		VertexConsumer lines = context.consumers().getBuffer(RenderLayers.lines());
+		if (matrices == null) return;
+		// Fabric sometimes has no buffers to hand at this point; then draw through our own and flush them here.
+		VertexConsumerProvider consumers = context.consumers();
+		VertexConsumerProvider.Immediate own = null;
+		if (consumers == null) {
+			own = client.getBufferBuilders().getEntityVertexConsumers();
+			consumers = own;
+		}
+		VertexConsumer lines = consumers.getBuffer(RenderLayers.lines());
 		for (Box box : boxes) {
 			VertexRendering.drawOutline(matrices, lines, SHAPE, box.x, box.y, box.z, 0xFF000000 | box.rgb, BIConfig.INSTANCE.outlineWidth);
 		}
+		if (own != null) own.draw(RenderLayers.lines());
 
 		if (!BIConfig.INSTANCE.overlayFill) return;
-		VertexConsumer quads = context.consumers().getBuffer(RenderLayers.debugQuads());
+		VertexConsumer quads = consumers.getBuffer(RenderLayers.debugQuads());
 		MatrixStack.Entry entry = matrices.peek();
 		int alpha = Math.round(BIConfig.INSTANCE.overlayOpacity * 2.55f) << 24;
 		for (Box box : boxes) {
 			fillCube(quads, entry, (float) box.x, (float) box.y, (float) box.z, alpha | box.rgb);
 		}
+		if (own != null) own.draw(RenderLayers.debugQuads());
 	}
 
 	private static void fillCube(VertexConsumer buffer, MatrixStack.Entry entry, float x, float y, float z, int argb) {

@@ -91,21 +91,52 @@ public class SettingsScreen extends OptionsScreen {
 							v -> Text.translatable(P + ".hud_corner." + v.name().toLowerCase(Locale.ROOT)));
 				}),
 				new Tab("map", r -> {
+					r.header("header.minimap");
+					r.toggle("minimap", () -> c.minimap, v -> c.minimap = v);
+					r.slider("minimap_size", 64, 256, () -> c.minimapSize, v -> c.minimapSize = v, v -> v + " px");
+					r.slider("minimap_zoom", 0, 5, () -> (int) Math.round(Math.log(c.minimapZoom / Minimap.MIN_ZOOM) / Math.log(2)),
+							v -> c.minimapZoom = Minimap.MIN_ZOOM * (1 << v),
+							v -> {
+								double zoom = Minimap.MIN_ZOOM * (1 << v);
+								return zoom >= 1 ? Text.translatable(P + ".minimap_zoom.in", (int) zoom).getString()
+										: Text.translatable(P + ".minimap_zoom.out", (int) Math.round(1 / zoom)).getString();
+							});
+					r.toggle("minimap_rotate", () -> c.minimapRotate, v -> c.minimapRotate = v);
+					r.cycle("minimap_corner", BIConfig.Corner.values(), () -> c.minimapCorner, v -> c.minimapCorner = v,
+							v -> Text.translatable(P + ".hud_corner." + v.name().toLowerCase(Locale.ROOT)));
+					r.toggle("minimap_coords", () -> c.minimapCoords, v -> c.minimapCoords = v);
+					r.toggle("minimap_players", () -> c.minimapPlayers, v -> c.minimapPlayers = v);
+					r.header("header.recording");
 					r.toggle("record_map", () -> c.recordMap, v -> c.recordMap = v);
 					r.slider("map_speed", 1, 24, () -> c.mapSpeed, v -> c.mapSpeed = v,
 							v -> Text.translatable(P + ".map_speed.value", v * 20).getString());
+					r.header("header.full_map");
 					r.toggle("map_damage", () -> c.mapDamageDots, v -> c.mapDamageDots = v);
 					r.toggle("map_grid", () -> c.mapGrid, v -> c.mapGrid = v);
+					r.toggle("map_pins", () -> c.mapPins, v -> c.mapPins = v);
 				}),
-				new Tab("data", r -> {
-					r.header("header.friends");
+				new Tab("friends", r -> {
+					r.note(Text.translatable(P + ".friends_note"));
+					if (FabricLoaderHolder.naughtyOrNice()) r.note(Text.translatable(P + ".friends_nn"));
 					r.adder("friend_add", name -> {
 						if (!name.matches("[A-Za-z0-9_]{1,16}") || c.isFriend(name)) return false;
 						c.friends.add(name);
 						return true;
 					});
 					if (c.friends.isEmpty()) r.note(Text.translatable(P + ".no_friends"));
-					for (String friend : new ArrayList<>(c.friends)) r.removable(Text.literal(friend), () -> c.friends.remove(friend));
+					List<String> sorted = new ArrayList<>(c.friends);
+					sorted.sort(String.CASE_INSENSITIVE_ORDER);
+					for (String friend : sorted) {
+						String note = c.friendNotes.get(friend.toLowerCase(Locale.ROOT));
+						Text label = note == null ? Text.literal(friend)
+								: Text.literal(friend).append(Text.literal("  " + note).formatted(net.minecraft.util.Formatting.GRAY));
+						r.removable(label, () -> {
+							c.friends.remove(friend);
+							c.friendNotes.remove(friend.toLowerCase(Locale.ROOT));
+						});
+					}
+				}),
+				new Tab("data", r -> {
 					r.header("header.ignored");
 					r.adder("ignored_add", id -> {
 						Identifier parsed = Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
@@ -124,6 +155,13 @@ public class SettingsScreen extends OptionsScreen {
 							v -> Text.translatable(P + ".events", v / 50 * 50).getString());
 					r.button("open_folder", () -> Util.getOperatingSystem().open(BIConfig.dir()));
 				}));
+	}
+
+	/** Whether Naughty or Nice is installed (it fills in friends from its own Friends list). */
+	private static final class FabricLoaderHolder {
+		static boolean naughtyOrNice() {
+			return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("naughtyornice");
+		}
 	}
 
 	@Override

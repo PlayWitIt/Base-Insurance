@@ -52,7 +52,7 @@ public final class Materials {
 
 		// Everything we know is in storage: this mod's snapshots in every base here, plus Container Peek's memory.
 		String dimension = base.dimension;
-		Map<Long, Map<String, Integer>> stores = new HashMap<>(ContainerPeekBridge.containers(manager.worldKey(), dimension));
+		Map<Long, Map<String, Integer>> stores = new HashMap<>(ContainerPeekBridge.containers(BaseManager.rawWorldKey(net.minecraft.client.MinecraftClient.getInstance()), dimension));
 		Map<Long, String> labels = new HashMap<>();
 		for (Base other : manager.inDimension(dimension)) {
 			for (Map.Entry<Long, Base.ContainerSnapshot> entry : other.containers.entrySet()) {

@@ -59,6 +59,10 @@ public final class Commands {
 				.then(literal("map").executes(c -> {
 					mod().openLater(new MapScreen());
 					return 1;
+				}).then(literal("status").executes(Commands::mapStatus)))
+				.then(literal("minimap").executes(c -> {
+					BaseInsuranceClient.toggleMinimap(MinecraftClient.getInstance());
+					return 1;
 				}))
 				.then(literal("create")
 						.executes(c -> createOnMap(c, null))
@@ -99,6 +103,36 @@ public final class Commands {
 						.then(literal("list").executes(Commands::friendList))));
 	}
 
+	/** What the map is doing, to find out why it might be blank. */
+	private static int mapStatus(CommandContext<FabricClientCommandSource> c) {
+		FabricClientCommandSource s = c.getSource();
+		WorldMap map = mod().worldMap;
+		WorldMap.Stats stats = map.stats;
+		s.sendFeedback(Text.literal("Map status").formatted(Formatting.GOLD));
+		line(s, "Recording", BIConfig.INSTANCE.recordMap ? "on" : "OFF (turn it on in /bi settings)");
+		line(s, "Mod enabled", BIConfig.INSTANCE.enabled ? "yes" : "NO");
+		line(s, "World", String.valueOf(BaseManager.worldKey(MinecraftClient.getInstance())));
+		line(s, "Dimension", String.valueOf(map.dimension()));
+		line(s, "Chunks mapped this session", stats.chunksMapped + " (" + stats.emptyChunks + " had nothing to draw)");
+		line(s, "Waiting to be mapped", String.valueOf(map.queueSize()));
+		line(s, "Columns the server sent a wrong height for", stats.heightFixed + " (fixed)");
+		line(s, "Missed chunks caught later", String.valueOf(stats.sweptIn));
+		line(s, "Map tiles saved here", map.tilesOnDisk() + ", " + map.loadedTiles() + " in memory");
+		var folder = map.folderPath();
+		if (folder != null) {
+			s.sendFeedback(Text.literal("  Folder: ").formatted(Formatting.GRAY).append(Text.literal("[open]").styled(st -> st
+					.withColor(Formatting.AQUA).withUnderline(true).withClickEvent(new net.minecraft.text.ClickEvent.OpenFile(folder.toAbsolutePath().toString())))));
+		}
+		BaseInsuranceClient.LOGGER.info("Map status: recording={}, enabled={}, world={}, dimension={}, mapped={}, empty={}, queue={}, heightFixed={}, swept={}, onDisk={}, loaded={}, folder={}",
+				BIConfig.INSTANCE.recordMap, BIConfig.INSTANCE.enabled, BaseManager.worldKey(MinecraftClient.getInstance()), map.dimension(),
+				stats.chunksMapped, stats.emptyChunks, map.queueSize(), stats.heightFixed, stats.sweptIn, map.tilesOnDisk(), map.loadedTiles(), folder);
+		return 1;
+	}
+
+	private static void line(FabricClientCommandSource s, String label, String value) {
+		s.sendFeedback(Text.literal("  " + label + ": ").formatted(Formatting.GRAY).append(Text.literal(value).formatted(Formatting.WHITE)));
+	}
+
 	private static int help(CommandContext<FabricClientCommandSource> c) {
 		FabricClientCommandSource s = c.getSource();
 		s.sendFeedback(Text.literal("Base Insurance commands (client-side, never sent to the server):").formatted(Formatting.GOLD));
@@ -106,6 +140,8 @@ public final class Commands {
 				{"/bi create [name]", "pick an area to protect on the map"},
 				{"/bi create <name> <radius> [down] [up]", "protect the area around you right away"},
 				{"/bi map", "your explored world, bases and damage (or press M)"},
+				{"/bi map status", "what the map is doing, if it looks blank"},
+				{"/bi minimap", "show/hide the minimap (zoom it with - and =)"},
 				{"/bi guide", "how to get started"},
 				{"/bi report [name]", "open the damage report"},
 				{"/bi overlay", "show/hide changed blocks in the world"},
@@ -184,7 +220,7 @@ public final class Commands {
 		base.created = base.lastSeen = System.currentTimeMillis();
 
 		BaseManager manager = mod().manager;
-		int seeded = seedContainers(base, manager.worldKey(), world);
+		int seeded = seedContainers(base, BaseManager.rawWorldKey(MinecraftClient.getInstance()), world);
 		String size = (base.maxX - base.minX + 1) + "×" + (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1);
 		base.log(Base.EventType.CREATED, "Base created around " + Alerts.pos(center) + " (" + size + ")");
 		manager.add(base);

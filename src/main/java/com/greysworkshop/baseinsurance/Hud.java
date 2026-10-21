@@ -21,7 +21,8 @@ public final class Hud {
 		if (!BIConfig.INSTANCE.enabled || client.world == null || client.player == null || client.options.hudHidden) return;
 		TextRenderer font = client.textRenderer;
 		boolean right = BIConfig.INSTANCE.hudCorner == BIConfig.Corner.TOP_RIGHT;
-		int y = 4;
+		// Below the minimap if it's in the same corner.
+		int y = Math.max(4, Minimap.bottomIn(BIConfig.INSTANCE.hudCorner) + 4);
 
 		if (scanner.buildMode) {
 			drawCorner(context, font, Text.translatable("baseinsurance.hud.build_mode"), y, 0xFFFFD000, right);

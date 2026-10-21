@@ -2,7 +2,6 @@ package com.greysworkshop.baseinsurance;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -11,7 +10,6 @@ import net.minecraft.client.gui.widget.SliderWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.screen.ScreenTexts;
 import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix3x2fStack;
@@ -36,7 +34,7 @@ public class MapScreen extends Screen {
 	private static final int WHITE = 0xFFF0F0F0;
 	private static final int PANEL = 0xE0101018;
 	private static final int BORDER = 0xFF33334D;
-	private static final double MIN_ZOOM = 0.125;
+	private static final double MIN_ZOOM = 1 / 32.0;
 	private static final double MAX_ZOOM = 16;
 	private static final int MIN_SIZE = 4;
 
@@ -45,6 +43,8 @@ public class MapScreen extends Screen {
 	private static double centerZ;
 	private static double zoom = 2;
 	private static String viewDimension;
+	/** Keep the view centred on you as you move, until you drag it somewhere else. */
+	private static boolean following = true;
 
 	private final boolean createMode;
 	private final String initialName;
@@ -81,6 +81,7 @@ public class MapScreen extends Screen {
 				centerZ = p.getZ() + 0.5;
 				viewDimension = dimension;
 			}
+			following = !createMode;
 			baseY = p.getY();
 			selMinX = p.getX() - 48;
 			selMaxX = p.getX() + 48;
@@ -214,6 +215,7 @@ public class MapScreen extends Screen {
 		if (client.player == null) return;
 		centerX = client.player.getX();
 		centerZ = client.player.getZ();
+		following = true;
 	}
 
 	// ---- Input ----
@@ -231,6 +233,7 @@ public class MapScreen extends Screen {
 		for (int[] row : baseListRows) {
 			if (my >= row[1] && my < row[1] + 11 && mx >= 6 && mx < row[2]) {
 				Base base = BaseInsuranceClient.INSTANCE.manager.all().get(row[0]);
+				following = false;
 				centerX = (base.minX + base.maxX + 1) / 2.0;
 				centerZ = (base.minZ + base.maxZ + 1) / 2.0;
 				return true;
@@ -271,6 +274,7 @@ public class MapScreen extends Screen {
 		int ox = wx - dragStart[4], oz = wz - dragStart[5];
 		switch (drag) {
 			case PAN -> {
+				if (moved) following = false;
 				centerX -= dx / zoom;
 				centerZ -= dy / zoom;
 			}
@@ -319,6 +323,8 @@ public class MapScreen extends Screen {
 		if (mouseX >= mapRight()) return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
 		double beforeX = worldX(mouseX), beforeZ = worldZ(mouseY);
 		zoom = MathHelper.clamp(zoom * Math.pow(1.25, verticalAmount), MIN_ZOOM, MAX_ZOOM);
+		// While following you, zoom around you; otherwise around the mouse.
+		if (following) return true;
 		centerX = beforeX - (mouseX - mapCenterX()) / zoom;
 		centerZ = beforeZ - (mouseY - mapCenterY()) / zoom;
 		return true;
@@ -334,13 +340,20 @@ public class MapScreen extends Screen {
 	public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
 		context.fill(0, 0, width, height, 0xFF0B0B12);
 		int right = mapRight();
+		if (following && client.player != null && drag == Drag.NONE) {
+			var pos = client.player.getLerpedPos(delta);
+			centerX = pos.x;
+			centerZ = pos.z;
+		}
 		context.enableScissor(0, 0, right, height);
-		drawTiles(context, right);
+		MapRender.drawTerrain(context, mapCenterX(), mapCenterY(), centerX, centerZ, zoom, right / 2.0, height / 2.0);
 		drawGrid(context, right);
 		for (Base base : bases()) drawBase(context, base);
 		if (createMode) drawSelection(context);
 		drawTrustCircle(context);
-		drawPlayer(context);
+		drawMarkers(context);
+		drawOtherPlayers(context, delta);
+		drawPlayer(context, delta);
 		context.disableScissor();
 		drawOverlayText(context, mouseX, mouseY, right);
 		if (createMode) drawPanel(context);
@@ -350,34 +363,18 @@ public class MapScreen extends Screen {
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 		super.render(context, mouseX, mouseY, delta);
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
-			Base base = baseAt(mouseX, mouseY);
-			if (base != null) {
+			MapMarkers.Marker pin = markerAt(mouseX, mouseY);
+			Base base = pin == null ? baseAt(mouseX, mouseY) : null;
+			if (pin != null) {
+				List<Text> lines = new ArrayList<>();
+				lines.add(Text.literal(pin.label()).withColor(pin.color()));
+				if (!pin.detail().isEmpty()) lines.add(Text.literal(pin.detail()).withColor(0xFFB0B0C0));
+				context.drawTooltip(textRenderer, lines, mouseX, mouseY);
+			} else if (base != null) {
 				Text tip = base.damageCount() == 0
 						? Text.translatable("baseinsurance.map.tip_intact", base.name)
 						: Text.translatable("baseinsurance.map.tip_damage", base.name, Alerts.plural(base.damageCount(), "change"));
 				context.drawTooltip(textRenderer, tip, mouseX, mouseY);
-			}
-		}
-	}
-
-	private void drawTiles(DrawContext context, int right) {
-		WorldMap map = BaseInsuranceClient.INSTANCE.worldMap;
-		if (map.dimension() == null) return;
-		int rx0 = Math.floorDiv((int) Math.floor(worldX(0)), WorldMap.TILE);
-		int rx1 = Math.floorDiv((int) Math.floor(worldX(right)), WorldMap.TILE);
-		int rz0 = Math.floorDiv((int) Math.floor(worldZ(0)), WorldMap.TILE);
-		int rz1 = Math.floorDiv((int) Math.floor(worldZ(height)), WorldMap.TILE);
-		Matrix3x2fStack matrices = context.getMatrices();
-		for (int rx = rx0; rx <= rx1; rx++) {
-			for (int rz = rz0; rz <= rz1; rz++) {
-				WorldMap.Tile tile = map.tile(rx, rz, false);
-				if (tile == null) continue;
-				Identifier id = map.texture(tile);
-				matrices.pushMatrix();
-				matrices.translate((float) screenX(rx * WorldMap.TILE), (float) screenY(rz * WorldMap.TILE));
-				matrices.scale((float) zoom, (float) zoom);
-				context.drawTexture(RenderPipelines.GUI_TEXTURED, id, 0, 0, 0, 0, WorldMap.TILE, WorldMap.TILE, WorldMap.TILE, WorldMap.TILE);
-				matrices.popMatrix();
 			}
 		}
 	}
@@ -452,9 +449,60 @@ public class MapScreen extends Screen {
 		context.drawTextWithShadow(textRenderer, size, (x0 + x1) / 2 - w / 2, ly, WHITE);
 	}
 
-	private void drawPlayer(DrawContext context) {
+	/** Pins from other mods, drawn this frame, for hovering. */
+	private List<MapMarkers.Marker> markers = List.of();
+
+	/** Pins from other mods (where Naughty or Nice last saw players) as small diamonds; names when zoomed in. */
+	private void drawMarkers(DrawContext context) {
+		markers = BIConfig.INSTANCE.mapPins && viewDimension != null ? MapMarkers.in(viewDimension) : List.of();
+		for (MapMarkers.Marker pin : markers) {
+			int sx = (int) screenX(pin.x()), sy = (int) screenY(pin.z());
+			for (int i = 0; i <= 3; i++) context.fill(sx - i, sy - 3 + i, sx + i + 1, sy - 2 + i, 0xFF000000);
+			for (int i = 0; i <= 3; i++) context.fill(sx - i, sy + 3 - i, sx + i + 1, sy + 4 - i, 0xFF000000);
+			for (int i = 0; i <= 2; i++) context.fill(sx - i, sy - 2 + i, sx + i + 1, sy - 1 + i, pin.color());
+			for (int i = 0; i <= 2; i++) context.fill(sx - i, sy + 2 - i, sx + i + 1, sy + 3 - i, pin.color());
+			if (zoom >= 1 && !pin.label().isEmpty()) {
+				int w = textRenderer.getWidth(pin.label());
+				context.fill(sx - w / 2 - 2, sy + 5, sx + w / 2 + 2, sy + 15, 0xA0000000);
+				context.drawTextWithShadow(textRenderer, pin.label(), sx - w / 2, sy + 6, pin.color());
+			}
+		}
+	}
+
+	private MapMarkers.Marker markerAt(double mx, double my) {
+		MapMarkers.Marker best = null;
+		double bestDistance = 6;
+		for (MapMarkers.Marker pin : markers) {
+			double d = Math.hypot(screenX(pin.x()) - mx, screenY(pin.z()) - my);
+			if (d < bestDistance) {
+				best = pin;
+				bestDistance = d;
+			}
+		}
+		return best;
+	}
+
+	/** Other players you can see, as dots with their names when zoomed in enough to read them. */
+	private void drawOtherPlayers(DrawContext context, float delta) {
+		for (var player : client.world.getPlayers()) {
+			if (player == client.player) continue;
+			var pos = player.getLerpedPos(delta);
+			int sx = (int) screenX(pos.x), sy = (int) screenY(pos.z);
+			context.fill(sx - 2, sy - 2, sx + 2, sy + 2, 0xFF000000);
+			context.fill(sx - 1, sy - 1, sx + 1, sy + 1, 0xFFFFFFFF);
+			if (zoom >= 0.5) {
+				String name = player.getGameProfile().name();
+				int w = textRenderer.getWidth(name);
+				context.fill(sx - w / 2 - 2, sy - 13, sx + w / 2 + 2, sy - 3, 0xA0000000);
+				context.drawTextWithShadow(textRenderer, name, sx - w / 2, sy - 12, 0xFFFFFFFF);
+			}
+		}
+	}
+
+	private void drawPlayer(DrawContext context, float delta) {
 		if (client.player == null) return;
-		float sx = (float) screenX(client.player.getX()), sy = (float) screenY(client.player.getZ());
+		var pos = client.player.getLerpedPos(delta);
+		float sx = (float) screenX(pos.x), sy = (float) screenY(pos.z);
 		Matrix3x2fStack matrices = context.getMatrices();
 		matrices.pushMatrix();
 		matrices.translate(sx, sy);
@@ -557,7 +605,8 @@ public class MapScreen extends Screen {
 		if (client.player == null) return;
 		double radius = BIConfig.INSTANCE.trustRadius * zoom;
 		if (radius < 6) return;
-		double cx = screenX(client.player.getX()), cy = screenY(client.player.getZ());
+		var pos = client.player.getLerpedPos(client.getRenderTickCounter().getTickProgress(false));
+		double cx = screenX(pos.x), cy = screenY(pos.z);
 		int dashes = 72;
 		for (int i = 0; i < dashes; i += 2) {
 			for (int step = 0; step < 4; step++) {
@@ -568,9 +617,30 @@ public class MapScreen extends Screen {
 		}
 	}
 
+	static double testCenterX() {
+		return centerX;
+	}
+
+	static double testCenterZ() {
+		return centerZ;
+	}
+
+	static double testZoom() {
+		return zoom;
+	}
+
+	/** Sets the view; for the dev tests. */
+	static void testView(double x, double z, double newZoom) {
+		centerX = x;
+		centerZ = z;
+		zoom = newZoom;
+		following = false;
+	}
+
 	/** A map centred on a base. */
 	public static MapScreen centeredOn(Base base) {
 		MapScreen screen = new MapScreen();
+		following = false;
 		centerX = (base.minX + base.maxX + 1) / 2.0;
 		centerZ = (base.minZ + base.maxZ + 1) / 2.0;
 		viewDimension = base.dimension;
