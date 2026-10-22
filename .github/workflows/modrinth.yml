@@ -1,0 +1,32 @@
+# Each GitHub release is built and published to Modrinth too, so launchers and Mod Menu see the update.
+name: Publish to Modrinth
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build
+        run: chmod +x gradlew && ./gradlew build
+      - name: Publish
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: fIRk5dHk
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: build/libs/!(*-@(dev|sources|javadoc)).jar
+          name: ${{ github.event.release.name }}
+          changelog: ${{ github.event.release.body }}
+          loaders: fabric
+          game-versions: 1.21.11
+          dependencies: fabric-api(required)
+          version-type: release
