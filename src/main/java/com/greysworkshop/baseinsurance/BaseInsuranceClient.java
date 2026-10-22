@@ -59,6 +59,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		INSTANCE = this;
 		BIConfig.load();
+		ModsPanel.install(panelEntry());
 
 		KeyBinding.Category category = KeyBinding.Category.create(Identifier.of(MOD_ID, "main"));
 		reportKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.report", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
@@ -241,5 +242,40 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			saveTimer = 0;
 			manager.saveAll(true);
 		}
+	}
+
+	/** This mod's part of the mods panel (Right Shift on the title screen): the switches worth flipping before joining. */
+	private static java.util.Map<String, Object> panelEntry() {
+		BIConfig c = BIConfig.INSTANCE;
+		String P = "baseinsurance.config";
+		String version = net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer(MOD_ID)
+				.map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("?").replaceAll("\\+.*", "");
+		java.util.List<java.util.Map<String, Object>> switches = java.util.List.of(
+				master(ModsPanel.toggle(Text.translatable(P + ".enabled"), Text.translatable(P + ".enabled.desc"), () -> c.enabled, v -> c.enabled = v)),
+				ModsPanel.section("Alerts"),
+				ModsPanel.toggle(Text.translatable(P + ".live_alerts"), Text.translatable(P + ".live_alerts.desc"), () -> c.liveAlerts, v -> c.liveAlerts = v),
+				ModsPanel.toggle(Text.translatable(P + ".arrival_reports"), Text.translatable(P + ".arrival_reports.desc"), () -> c.arrivalReports, v -> c.arrivalReports = v),
+				ModsPanel.toggle(Text.translatable(P + ".player_alerts"), Text.translatable(P + ".player_alerts.desc"), () -> c.playerAlerts, v -> c.playerAlerts = v),
+				ModsPanel.toggle(Text.translatable(P + ".theft_alerts"), Text.translatable(P + ".theft_alerts.desc"), () -> c.theftAlerts, v -> c.theftAlerts = v),
+				ModsPanel.toggle(Text.translatable(P + ".sounds"), Text.translatable(P + ".sounds.desc"), () -> c.sounds, v -> c.sounds = v),
+				ModsPanel.section("Watching"),
+				ModsPanel.toggle(Text.translatable(P + ".track_containers"), Text.translatable(P + ".track_containers.desc"), () -> c.trackContainers, v -> c.trackContainers = v),
+				ModsPanel.toggle(Text.translatable(P + ".record_map"), Text.translatable(P + ".record_map.desc"), () -> c.recordMap, v -> c.recordMap = v),
+				ModsPanel.section("On screen"),
+				ModsPanel.toggle(Text.translatable(P + ".auto_overlay"), Text.translatable(P + ".auto_overlay.desc"), () -> c.autoOverlay, v -> c.autoOverlay = v),
+				ModsPanel.toggle(Text.translatable(P + ".hud_status"), Text.translatable(P + ".hud_status.desc"), () -> c.hudStatus, v -> c.hudStatus = v),
+				ModsPanel.toggle(Text.translatable(P + ".aim_info"), Text.translatable(P + ".aim_info.desc"), () -> c.aimInfo, v -> c.aimInfo = v),
+				ModsPanel.toggle(Text.translatable(P + ".minimap"), Text.translatable(P + ".minimap.desc"), () -> c.minimap, v -> c.minimap = v),
+				ModsPanel.section("Other"),
+				ModsPanel.toggle(Text.translatable(P + ".check_updates"), Text.translatable(P + ".check_updates.desc"), () -> c.checkUpdates, v -> c.checkUpdates = v));
+		return java.util.Map.of("id", MOD_ID, "name", "Base Insurance", "version", version, "icon", Identifier.of(MOD_ID, "icon.png"),
+				"settings", (java.util.function.Function<net.minecraft.client.gui.screen.Screen, net.minecraft.client.gui.screen.Screen>) SettingsScreen::new,
+				"save", (Runnable) BIConfig::save, "switches", switches);
+	}
+
+	private static java.util.Map<String, Object> master(java.util.Map<String, Object> toggle) {
+		java.util.Map<String, Object> m = new java.util.HashMap<>(toggle);
+		m.put("master", true);
+		return m;
 	}
 }

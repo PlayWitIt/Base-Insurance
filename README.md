@@ -15,6 +15,10 @@ By **PlayWit Creation**.
 Works well with [Naughty or Nice](https://github.com/PlayWitIt/Naughty-or-Nice): its friends become Base Insurance
 friends, and where it last saw players shows on the map.
 
+**Mods panel:** press **Right Shift** on the title screen, the server or world list, or the pause menu, or click
+**Mods panel** at the top left of the title screen. It shows the main switches of every PlayWit mod you have (Naughty or Nice,
+Base Insurance, Container Peek), so you can turn something off before you join a world, and opens each one's full settings.
+
 ## How it works
 1. **Insure a base.** Run `/bi create` and draw the area on the map.
 2. **Walk around it once.** Servers (especially anarchy servers with anti-xray or anti-freecam) fake blocks far away,
