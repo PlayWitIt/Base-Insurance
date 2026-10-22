@@ -68,7 +68,7 @@ public final class UpdateCheck {
 			HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NORMAL).build();
 			HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/" + REPO + "/releases/latest"))
 					.timeout(Duration.ofSeconds(15)).header("Accept", "application/vnd.github+json")
-					.header("User-Agent", "Base Insurance/" + current() + " (Minecraft mod by PlayWit Creation)").GET().build();
+					.header("User-Agent", "Base Insurance/" + current() + " (Minecraft mod by PlayWit Creations)").GET().build();
 			HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
 			// 404: no releases yet, or the repository isn't public.
 			if (response.statusCode() != 200) return;

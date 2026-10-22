@@ -46,6 +46,11 @@ public final class Alerts {
 					Text.literal("Base Insurance").formatted(urgent ? Formatting.RED : Formatting.GREEN, Formatting.BOLD), message));
 		}
 		sound(urgent);
+		// Urgent alerts also go to your phone, if Naughty or Nice is installed with phone alerts set up.
+		if (urgent && net.fabricmc.loader.api.FabricLoader.getInstance().getObjectShare().get("playwit:phone_alert") instanceof java.util.function.Consumer<?> phone) {
+			@SuppressWarnings("unchecked") java.util.function.Consumer<String> send = (java.util.function.Consumer<String>) phone;
+			send.accept("Base Insurance: " + message.getString());
+		}
 	}
 
 	public static void sound(boolean urgent) {

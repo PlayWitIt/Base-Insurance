@@ -52,6 +52,22 @@ public final class SelfTest {
 	}
 
 	private static void openWorld(MinecraftClient client) {
+		// A fresh world every run: blocks a run leaves behind (lava poured, chests placed) would change what the next one sees.
+		// The last run's world is kept beside it as "-previous".
+		java.nio.file.Path saves = client.runDirectory.toPath().resolve("saves");
+		java.nio.file.Path world = saves.resolve(WORLD), previous = saves.resolve(WORLD + "-previous");
+		try {
+			if (java.nio.file.Files.exists(world)) {
+				if (java.nio.file.Files.exists(previous)) {
+					try (var walk = java.nio.file.Files.walk(previous)) {
+						for (java.nio.file.Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) java.nio.file.Files.delete(p);
+					}
+				}
+				java.nio.file.Files.move(world, previous);
+			}
+		} catch (java.io.IOException e) {
+			log("Could not set the old test world aside: " + e);
+		}
 		if (client.getLevelStorage().levelExists(WORLD)) {
 			log("Loading existing test world");
 			client.createIntegratedServerLoader().start(WORLD, () -> {});
@@ -106,7 +122,7 @@ public final class SelfTest {
 			case 240 -> {
 				Base base = mod.manager.get("Test");
 				check("server-placed chest detected as a live change", base != null && base.changes.containsKey(chest.asLong()));
-				client.player.networkHandler.sendChatCommand("bi accept");
+				client.player.networkHandler.sendChatCommand("bi accept Test");
 			}
 			case 260 -> {
 				check("accept cleared the changes", mod.manager.get("Test").changes.isEmpty());
@@ -493,22 +509,22 @@ public final class SelfTest {
 			case 2230 -> {
 				if (client.currentScreen instanceof ReportScreen report) {
 					log("Rebuild tab: " + report.testDescribe() + " (changes: " + mod.manager.get("Test").changes.size() + ")");
-					report.testAction("Fetch with Container Peek");
+					report.testAction("Fetch with Hoard Eye");
 				}
 			}
 			case 2233 -> {
-				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json");
-				check("Rebuild tab hands the materials to Container Peek", java.nio.file.Files.exists(handOff));
+				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("hoardeye-fetch.json");
+				check("Rebuild tab hands the materials to Hoard Eye", java.nio.file.Files.exists(handOff));
 				try {
-					client.setScreen((net.minecraft.client.gui.screen.Screen) Class.forName("com.greysworkshop.containerpeek.SearchScreen")
+					client.setScreen((net.minecraft.client.gui.screen.Screen) Class.forName("com.greysworkshop.hoardeye.SearchScreen")
 							.getConstructor().newInstance());
 				} catch (ReflectiveOperationException e) {
-					log("FAIL could not open Container Peek's search: " + e);
+					log("FAIL could not open Hoard Eye's search: " + e);
 				}
 			}
 			case 2245 -> {
-				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json");
-				check("Container Peek picked up the handed-over fetch list", !java.nio.file.Files.exists(handOff));
+				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("hoardeye-fetch.json");
+				check("Hoard Eye picked up the handed-over fetch list", !java.nio.file.Files.exists(handOff));
 				screenshot(client, "16_fetch_from_rebuild");
 			}
 			case 2260 -> {

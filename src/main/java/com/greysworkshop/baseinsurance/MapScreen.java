@@ -222,6 +222,7 @@ public class MapScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(Click click, boolean doubled) {
+		if (ModsPanel.streamSafe()) return true;
 		if (super.mouseClicked(click, doubled)) return true;
 		double mx = click.x(), my = click.y();
 		if (mx >= mapRight()) return false;
@@ -362,6 +363,12 @@ public class MapScreen extends Screen {
 	@Override
 	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
 		super.render(context, mouseX, mouseY, delta);
+		if (ModsPanel.streamSafe()) {
+			context.fill(0, 0, width, height, 0xF0101418);
+			context.drawCenteredTextWithShadow(textRenderer, "Hidden while stream-safe mode is on", width / 2, height / 2 - 10, 0xFFFFFFFF);
+			context.drawCenteredTextWithShadow(textRenderer, "The map gives away where you are. Press Esc, then the stream-safe key to show it.", width / 2, height / 2 + 4, 0xFF9AA4AE);
+			return;
+		}
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
 			MapMarkers.Marker pin = markerAt(mouseX, mouseY);
 			Base base = pin == null ? baseAt(mouseX, mouseY) : null;

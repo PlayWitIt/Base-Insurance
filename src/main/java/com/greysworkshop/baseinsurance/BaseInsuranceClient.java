@@ -270,7 +270,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 				ModsPanel.toggle(Text.translatable(P + ".check_updates"), Text.translatable(P + ".check_updates.desc"), () -> c.checkUpdates, v -> c.checkUpdates = v));
 		return java.util.Map.of("id", MOD_ID, "name", "Base Insurance", "version", version, "icon", Identifier.of(MOD_ID, "icon.png"),
 				"settings", (java.util.function.Function<net.minecraft.client.gui.screen.Screen, net.minecraft.client.gui.screen.Screen>) SettingsScreen::new,
-				"save", (Runnable) BIConfig::save, "switches", switches);
+				"save", (Runnable) BIConfig::save, "data", java.util.List.of("baseinsurance"), "switches", switches);
 	}
 
 	private static java.util.Map<String, Object> master(java.util.Map<String, Object> toggle) {

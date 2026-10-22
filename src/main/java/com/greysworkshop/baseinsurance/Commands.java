@@ -235,16 +235,16 @@ public final class Commands {
 		feedback.accept(Text.literal("⚑ " + name + " is now insured: " + size + " blocks.").formatted(Formatting.GREEN));
 		feedback.accept(Text.literal("The snapshot is taken over the next few seconds. Parts that aren't loaded yet are captured when you get near them.").formatted(Formatting.GRAY));
 		if (seeded > 0) {
-			feedback.accept(Text.literal("Imported contents of " + Alerts.plural(seeded, "container") + " from Container Peek.").formatted(Formatting.GRAY));
+			feedback.accept(Text.literal("Imported contents of " + Alerts.plural(seeded, "container") + " from Hoard Eye.").formatted(Formatting.GRAY));
 		}
 		feedback.accept(Text.literal("Open each chest once so its contents are on record. Tip: /bi friend add <name> for people who share the base.").formatted(Formatting.GRAY));
 		return null;
 	}
 
-	/** Starts container records from what Container Peek already knows about storage in this area. */
+	/** Starts container records from what Hoard Eye already knows about storage in this area. */
 	private static int seedContainers(Base base, String worldKey, ClientWorld world) {
 		int seeded = 0;
-		for (Map.Entry<Long, Map<String, Integer>> entry : ContainerPeekBridge.containers(worldKey, base.dimension).entrySet()) {
+		for (Map.Entry<Long, Map<String, Integer>> entry : HoardEyeBridge.containers(worldKey, base.dimension).entrySet()) {
 			BlockPos pos = BlockPos.fromLong(entry.getKey());
 			if (!base.contains(pos)) continue;
 			boolean loaded = world.isChunkLoaded(pos.getX() >> 4, pos.getZ() >> 4);

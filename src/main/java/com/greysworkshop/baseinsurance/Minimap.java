@@ -34,7 +34,8 @@ public final class Minimap {
 		MinecraftClient client = MinecraftClient.getInstance();
 		BIConfig config = BIConfig.INSTANCE;
 		bottom = -1;
-		if (!config.enabled || !config.minimap || client.world == null || client.player == null || client.options.hudHidden
+		// Stream-safe mode (see ModsPanel): the map around you gives your location away to anyone watching.
+		if (!config.enabled || !config.minimap || ModsPanel.streamSafe() || client.world == null || client.player == null || client.options.hudHidden
 				|| client.getDebugHud().shouldShowDebugHud() || client.currentScreen instanceof MapScreen) {
 			return;
 		}

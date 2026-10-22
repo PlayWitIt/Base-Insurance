@@ -425,9 +425,9 @@ public class ReportScreen extends Screen {
 		}
 		int blocks = needs.stream().mapToInt(Materials.Need::needed).sum();
 		List<Action> headerActions = new ArrayList<>();
-		if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("containerpeek") && !needs.isEmpty()) {
-			headerActions.add(new Action("Fetch with Container Peek", CYAN, () -> {
-				flash(sendToFetchList(needs) ? "Sent to Container Peek: open Storage Search (Y) → Fetch list" : "Couldn't write the fetch list");
+		if (net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("hoardeye") && !needs.isEmpty()) {
+			headerActions.add(new Action("Fetch with Hoard Eye", CYAN, () -> {
+				flash(sendToFetchList(needs) ? "Sent to Hoard Eye: open Storage Search (Y) → Fetch list" : "Couldn't write the fetch list");
 			}));
 		}
 		lines.add(new Line(Text.literal("To restore " + base.name + ": " + blocks + " blocks of " + needs.size() + " kinds"),
@@ -468,7 +468,7 @@ public class ReportScreen extends Screen {
 	// ---- Helpers ----
 
 	/**
-	 * Hands the materials still needed (beyond what you're carrying) to Container Peek's fetch list, through a
+	 * Hands the materials still needed (beyond what you're carrying) to Hoard Eye's fetch list, through a
 	 * small file it picks up next time Storage Search opens.
 	 */
 	private static boolean sendToFetchList(List<Materials.Need> needs) {
@@ -485,7 +485,7 @@ public class ReportScreen extends Screen {
 		root.addProperty("from", "Base Insurance");
 		root.add("items", items);
 		try {
-			java.nio.file.Files.writeString(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("containerpeek-fetch.json"),
+			java.nio.file.Files.writeString(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("hoardeye-fetch.json"),
 					root.toString());
 			return true;
 		} catch (java.io.IOException e) {

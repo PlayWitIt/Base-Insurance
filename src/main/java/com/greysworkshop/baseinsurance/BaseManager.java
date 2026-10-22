@@ -35,7 +35,7 @@ public final class BaseManager {
 		return null;
 	}
 
-	/** The key as Container Peek spells it (the address exactly as typed), for reading its data. */
+	/** The key as Hoard Eye (Hoard Eye then) spelled it before 3.0.0 (the address exactly as typed), for reading its data. */
 	public static String rawWorldKey(MinecraftClient client) {
 		ServerInfo server = client.getCurrentServerEntry();
 		if (server != null) return "server:" + server.address;
