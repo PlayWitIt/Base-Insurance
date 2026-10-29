@@ -342,6 +342,38 @@ if (wait > 0) {
 				boolean inside = base.changes.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k)));
 				SelfTest.check("resize: shrinking drops what's left outside (" + base.changes.size() + " changes, all inside: " + inside + ")",
 						inside && base.containers.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k))));
+				SelfTest.log("M key: map, radar (with Naughty or Nice: " + ViewCycle.Radar.present() + "), minimap, off");
+				ViewCycle.pressed(client);
+				next(10);
+			}
+			case 31 -> {
+				SelfTest.check("M opens the map", client.currentScreen instanceof MapScreen);
+				ViewCycle.pressedOnMap(client);
+				next(20);
+			}
+			case 32 -> {
+				boolean radar = ViewCycle.Radar.present();
+				SelfTest.check("M again closes it and shows " + (radar ? "the trail radar, minimap hidden" : "the minimap (no radar installed)"),
+						client.currentScreen == null && (radar ? radarOn() && !BIConfig.INSTANCE.minimap : BIConfig.INSTANCE.minimap));
+				if (radar) SelfTest.screenshot(client, "23_m_radar");
+				if (radar) ViewCycle.pressed(client);
+				next(20);
+			}
+			case 33 -> {
+				SelfTest.check("…then the minimap, radar hidden", BIConfig.INSTANCE.minimap && !radarOn());
+				SelfTest.screenshot(client, "24_m_minimap");
+				ViewCycle.pressed(client);
+				next(10);
+			}
+			case 34 -> {
+				SelfTest.check("…then nothing", !BIConfig.INSTANCE.minimap && !radarOn() && client.currentScreen == null);
+				ViewCycle.pressed(client);
+				next(10);
+			}
+			case 35 -> {
+				SelfTest.check("…then the map again", client.currentScreen instanceof MapScreen);
+				client.setScreen(null);
+				BIConfig.INSTANCE.minimap = true;
 				SelfTest.log("RESULT " + SelfTest.passed + " passed, " + SelfTest.failed + " failed");
 				step = -1;
 				finished = true;
@@ -360,6 +392,16 @@ if (wait > 0) {
 			boolean shown = Vec3d.ofCenter(pos).distanceTo(eye) <= Sight.CONTAINER_RANGE && Sight.visible(client.world, client.player, eye, pos);
 			BlockState want = shown ? e.getValue() : Blocks.AIR.getDefaultState();
 			if (client.world.getBlockState(pos) != want) client.world.setBlockState(pos, want);
+		}
+	}
+
+	/** Naughty or Nice's radar setting, if it's installed. */
+	private static boolean radarOn() {
+		try {
+			Object config = Class.forName("com.greysworkshop.naughtyornice.NNConfig").getField("INSTANCE").get(null);
+			return config.getClass().getField("trailRadar").getBoolean(config);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			return false;
 		}
 	}
 
