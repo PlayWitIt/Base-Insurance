@@ -24,7 +24,7 @@ import java.util.Map;
 
 /**
  * The damage report. Every group of changes can be found (markers through walls), accepted, or marked as
- * "not damage" (ignore that block type), all undoable.
+ * "never count" (ignore that block type), all undoable.
  */
 public class ReportScreen extends Screen {
 	private enum Tab { OVERVIEW, DAMAGE, CONTAINERS, REBUILD, TIMELINE }
@@ -49,14 +49,26 @@ public class ReportScreen extends Screen {
 
 	private static Tab lastTab = Tab.OVERVIEW;
 
-	/** A clickable chip at the right of a row. */
-	private record Action(String label, int color, Runnable run) {}
+	/** A clickable chip at the right of a row, with a line saying what it does. */
+	private record Action(String label, int color, Runnable run, String tip) {
+		Action(String label, int color, Runnable run) {
+			this(label, color, run, null);
+		}
+	}
 
-	private record Line(Text text, ItemStack icon, int color, int indent, boolean header, List<Action> actions) {}
+	/** One entry; {@code bar} (0 to 1) draws a progress bar under it, -1 for none. */
+	private record Line(Text text, ItemStack icon, int color, int indent, boolean header, List<Action> actions, float bar) {
+		Line(Text text, ItemStack icon, int color, int indent, boolean header, List<Action> actions) {
+			this(text, icon, color, indent, header, actions, -1);
+		}
+	}
 
-	private record Row(OrderedText text, ItemStack icon, int color, int indent, boolean header, List<Action> actions, int height) {}
+	private record Row(OrderedText text, ItemStack icon, int color, int indent, boolean header, List<Action> actions, int height, float bar) {}
 
-	private record Hit(int x0, int y0, int x1, int y1, Runnable run) {}
+	private record Hit(int x0, int y0, int x1, int y1, Runnable run, String tip) {}
+
+	private static final String TIP_SHOW = "Puts markers on it that show through walls, and points the way";
+	private static final String TIP_FINE = "It was you, or it's fine: take it as the new normal and stop reporting it (Undo can bring it back)";
 
 	private final Base base;
 	private Tab tab = lastTab;
@@ -105,7 +117,7 @@ public class ReportScreen extends Screen {
 		addDrawableChild(undo);
 		ButtonWidget acceptAll = ButtonWidget.builder(Text.translatable("baseinsurance.report.accept"), b ->
 				client.setScreen(new ConfirmScreen(confirmed -> {
-					if (confirmed) flash("Accepted " + BaseActions.acceptAll(base) + " changes · Undo is available");
+					if (confirmed) flash("Marked " + Alerts.plural(BaseActions.acceptAll(base), "change") + " as fine · Undo is available");
 					client.setScreen(this);
 				}, Text.translatable("baseinsurance.report.accept.title"),
 						Text.translatable("baseinsurance.report.accept.message", base.damageCount(), base.name))))
@@ -155,8 +167,10 @@ public class ReportScreen extends Screen {
 				boolean first = i == 0;
 				int height = first && (!line.icon.isEmpty() || !line.actions.isEmpty()) ? ICON_HEIGHT : TEXT_HEIGHT;
 				if (line.header && first) height = 20;
+				float bar = i == wrapped.size() - 1 ? line.bar : -1;
+				if (bar >= 0) height += 8;
 				rows.add(new Row(wrapped.get(i), first ? line.icon : ItemStack.EMPTY, line.color,
-						line.indent + (first ? 0 : iconSpace), line.header && first, first ? line.actions : List.of(), height));
+						line.indent + (first ? 0 : iconSpace), line.header && first, first ? line.actions : List.of(), height, bar));
 				contentHeight += height;
 			}
 		}
@@ -179,7 +193,8 @@ public class ReportScreen extends Screen {
 	}
 
 	private void acceptGroup(List<Long> keys, String what) {
-		flash("Accepted " + BaseActions.accept(base, keys, "Accepted " + what) + " · Undo is available");
+		int n = BaseActions.accept(base, keys, "Accepted " + what);
+		flash("Marked " + Alerts.plural(n, "change") + " as fine · Undo is available");
 		clearAndInit();
 	}
 
@@ -191,7 +206,7 @@ public class ReportScreen extends Screen {
 			if (involves(e.getValue().wasState(), blockId) || involves(e.getValue().nowState(), blockId)) involving.add(e.getKey());
 		}
 		int accepted = BaseActions.ignoreType(base, blockId, blockName, involving);
-		flash(blockName + " no longer counts as damage (" + accepted + " cleared) · Undo is available");
+		flash(blockName + " never counts now (" + accepted + " cleared) · Undo is available");
 		clearAndInit();
 	}
 
@@ -203,69 +218,152 @@ public class ReportScreen extends Screen {
 
 	private List<Line> overview() {
 		List<Line> lines = new ArrayList<>();
-		lines.add(header(base.name + " — " + base.dimension.replace("minecraft:", "") + ", " + (base.maxX - base.minX + 1) + "×"
-				+ (base.maxY - base.minY + 1) + "×" + (base.maxZ - base.minZ + 1) + " blocks", GOLD));
-		lines.add(line("From " + base.minX + " " + base.minY + " " + base.minZ + " to " + base.maxX + " " + base.maxY + " " + base.maxZ
-				+ ". Insured since " + Alerts.time(base.created) + ". Last visit " + Alerts.ago(base.lastSeen) + ".", GRAY,
-				List.of(new Action("Map", CYAN, () -> client.setScreen(MapScreen.centeredOn(base))))));
+		lines.add(new Line(Text.literal(base.name + "  ·  " + base.sizeText() + " blocks, " + base.dimension.replace("minecraft:", "").replace('_', ' ')),
+				ItemStack.EMPTY, GOLD, 0, true, List.of(
+						new Action("Map", CYAN, () -> client.setScreen(MapScreen.centeredOn(base)), "Shows the base on the map"),
+						new Action("Resize", CYAN, () -> client.setScreen(MapScreen.forEdit(base)), "Make the base bigger or smaller, or move it"))));
+		lines.add(text("From " + base.minX + " " + base.minY + " " + base.minZ + " to " + base.maxX + " " + base.maxY + " " + base.maxZ
+				+ " · insured " + Alerts.time(base.created) + " · last visit " + Alerts.ago(base.lastSeen), GRAY));
 		lines.add(blank());
 
+		int percent = base.snapshotPercent();
 		if (base.damageCount() == 0) {
-			lines.add(text("✔ Everything matches the snapshot.", GREEN));
-		} else if (base.changes.isEmpty()) {
-			lines.add(line("⚠ " + Alerts.plural(base.entityChanges.size(), "item frame, painting or armor stand") + " changed", RED,
-					List.of(new Action("See damage", RED, () -> showTab("DAMAGE")))));
+			lines.add(header(percent < 100 ? "✔ Nothing has changed in the parts checked so far" : "✔ Nothing has changed", GREEN));
+			lines.add(text("Everything Base Insurance has seen here is just as it was.", GRAY));
 		} else {
 			int live = 0;
 			for (Base.Change change : base.changes.values()) if (change.live) live++;
-			lines.add(line("⚠ " + Alerts.plural(base.changes.size(), "block") + " differ from the snapshot", RED,
-					List.of(new Action("See damage", RED, () -> showTab("DAMAGE")))));
-			lines.add(indented("■ " + base.count(Base.Kind.REMOVED) + " removed", 0xFF000000 | Overlay.REMOVED, 10));
-			lines.add(indented("■ " + base.count(Base.Kind.ADDED) + " placed by someone else", 0xFF000000 | Overlay.ADDED, 10));
-			lines.add(indented("■ " + base.count(Base.Kind.REPLACED) + " replaced", 0xFF000000 | Overlay.REPLACED, 10));
-			lines.add(indented((base.changes.size() - live) + " found when you came back, " + live + " happened while you were here.", GRAY, 10));
-			if (!base.entityChanges.isEmpty()) {
-				lines.add(indented("■ " + Alerts.plural(base.entityChanges.size(), "item frame, painting or armor stand") + " changed",
-						0xFF000000 | Overlay.ENTITY, 10));
+			int count = base.damageCount();
+			lines.add(new Line(Text.literal("⚠ " + count + (count == 1 ? " thing has" : " things have") + " changed"), ItemStack.EMPTY, RED, 0, true,
+					List.of(new Action("See all", RED, () -> showTab("DAMAGE"), "Every change, grouped, with what you can do about each"))));
+			// Most important first: containers broken, then what's gone, swapped, added, and frames.
+			List<Runnable> rows = new ArrayList<>();
+			for (long key : destroyedContainers()) {
+				Base.ContainerSnapshot snapshot = base.containers.get(key);
+				BlockPos pos = BlockPos.fromLong(key);
+				ItemStack icon = BlockStates.icon(BlockStates.parse(snapshot.block));
+				String had = snapshot.items.isEmpty() ? "it was empty" : "had " + String.join(", ", ContainerWatcher.describe(snapshot.items, 3));
+				rows.add(() -> lines.add(new Line(Text.literal(BlockStates.name(snapshot.block).getString() + " destroyed · " + had), icon, RED, 8, false,
+						List.of(new Action("Show me", CYAN, () -> findPos(pos, "Destroyed container", icon), TIP_SHOW)))));
+			}
+			java.util.Set<Long> destroyedHere = new java.util.HashSet<>(destroyedContainers());
+			for (Group group : groups()) {
+				// A destroyed chest is already listed above, with what it held.
+				if (destroyedHere.containsAll(group.keys)) continue;
+				ItemStack icon = BlockStates.icon(group.icon);
+				rows.add(() -> lines.add(new Line(Text.literal(group.sentence()), icon, 0xFF000000 | Overlay.color(group.kind), 8, false,
+						List.of(new Action("Show me", CYAN, () -> find(group.keys, group.name, icon), TIP_SHOW)))));
+			}
+			for (Base.EntityChange change : base.entityChanges.values()) {
+				ItemStack icon = entityIcon(change.was);
+				rows.add(() -> lines.add(new Line(Text.literal(change.describe()), icon, 0xFF000000 | Overlay.ENTITY, 8, false,
+						List.of(new Action("Show me", CYAN, () -> findPos(change.was.pos(), change.was.name, icon), TIP_SHOW)))));
+			}
+			rows.subList(0, Math.min(6, rows.size())).forEach(Runnable::run);
+			if (rows.size() > 6) lines.add(indented("…and " + (rows.size() - 6) + " more. See all shows everything.", GRAY, 8));
+			if (!base.changes.isEmpty()) {
+				lines.add(indented((base.changes.size() - live) + " found when you came back · " + live + " while you were here", GRAY, 8));
 			}
 		}
 		lines.add(blank());
 
-		int percent = base.snapshotPercent();
-		if (percent < 100) {
-			lines.add(text("◔ Snapshot " + percent + "% seen up close", YELLOW));
-			lines.add(indented("Only blocks within " + BIConfig.INSTANCE.trustRadius + " blocks of you are trusted, because servers fake blocks "
-					+ "further away. Walk around the whole base once; parts you haven't been near can't be checked yet.", GRAY, 10));
-		} else {
-			lines.add(text("● Snapshot complete: every block has been seen up close.", GREEN));
+		// Chests and frames that looked gone from out of sight, with no word from the server that they were broken.
+		var unseenBlocks = BaseInsuranceClient.INSTANCE.scanner.toCheck(base);
+		var unseenEntities = BaseInsuranceClient.INSTANCE.entityWatch.toCheck(base);
+		if (!unseenBlocks.isEmpty() || !unseenEntities.isEmpty()) {
+			lines.add(header("◎ Can't see from here: " + (unseenBlocks.size() + unseenEntities.size()) + " to look at", YELLOW));
+			lines.add(indented("Servers hide chests and item frames you can't see, so these aren't counted as damage. Go and look: "
+					+ "if one is really gone it's reported then. (One broken where the server says so is reported straight away.)", GRAY, 10));
+			unseenBlocks.entrySet().stream().limit(6).forEach(e -> {
+				BlockPos pos = BlockPos.fromLong(e.getKey());
+				ItemStack icon = BlockStates.icon(e.getValue());
+				String what = e.getValue().getBlock().getName().getString();
+				lines.add(new Line(Text.literal(what + " at " + Alerts.pos(pos)), icon, WHITE, 8, false,
+						List.of(new Action("Show me", CYAN, () -> findPos(pos, what, icon), TIP_SHOW))));
+			});
+			unseenEntities.values().stream().limit(6).forEach(record -> {
+				ItemStack icon = entityIcon(record);
+				lines.add(new Line(Text.literal(record.name + " (" + record.contents() + ") at " + Alerts.pos(record.pos())), icon, WHITE, 8, false,
+						List.of(new Action("Show me", CYAN, () -> findPos(record.pos(), record.name, icon), TIP_SHOW))));
+			});
+			lines.add(blank());
 		}
+
+		lines.add(new Line(Text.literal(percent < 100 ? "◔ Checked so far: " + percent + "%" : "● Fully checked"), ItemStack.EMPTY,
+				percent < 100 ? YELLOW : GREEN, 0, false,
+				percent < 100 ? List.of(new Action("Where?", CYAN, () -> client.setScreen(MapScreen.centeredOn(base)),
+						"The map shades the parts still to check")) : List.of(), percent / 100f));
+		lines.add(indented(percent < 100
+				? "Everything within " + BIConfig.INSTANCE.trustRadius + " blocks of you is checked (further off, servers can fake blocks). Walk past the shaded parts on the map once and the whole base is covered."
+				: "Every part of the base has been checked, so a change anywhere in it will be noticed.", GRAY, 10));
 		lines.add(blank());
 
 		int destroyed = destroyedContainers().size();
 		long thefts = base.events.stream().filter(e -> e.type == Base.EventType.CONTAINER).count();
-		lines.add(line("▣ " + base.containers.size() + " containers on record"
-				+ (destroyed > 0 ? ", " + destroyed + " destroyed" : "")
-				+ (thefts > 0 ? ", " + Alerts.plural((int) thefts, "theft report") : "") + ".", destroyed + thefts > 0 ? RED : WHITE,
-				destroyed + thefts > 0 ? List.of(new Action("Details", RED, () -> showTab("CONTAINERS"))) : List.of()));
+		lines.add(new Line(Text.literal("▣ Chests on record: " + base.containers.size()
+				+ (destroyed > 0 ? " · " + destroyed + " destroyed" : "") + (thefts > 0 ? " · " + thefts + " had items taken" : "")),
+				ItemStack.EMPTY, destroyed + thefts > 0 ? RED : WHITE, 0, false,
+				List.of(new Action("Chests", CYAN, () -> showTab("CONTAINERS"), "Every chest, barrel and shulker box on record"))));
+		if (base.containers.isEmpty()) lines.add(indented("Open each chest once so Base Insurance knows what's in it.", GRAY, 10));
 		lines.add(blank());
 
 		List<Base.Event> sightings = base.events.stream().filter(e -> e.type == Base.EventType.PLAYER).toList();
-		lines.add(text("◉ Players seen near this base: " + (sightings.isEmpty() ? "none" : sightings.size()), sightings.isEmpty() ? GREEN : PURPLE));
-		for (int i = sightings.size() - 1; i >= Math.max(0, sightings.size() - 6); i--) {
-			lines.add(indented("[" + Alerts.time(sightings.get(i).time) + "] " + sightings.get(i).text, GRAY, 10));
+		lines.add(text("◉ Players seen near here: " + (sightings.isEmpty() ? "nobody" : sightings.size()), sightings.isEmpty() ? GREEN : PURPLE));
+		for (int i = sightings.size() - 1; i >= Math.max(0, sightings.size() - 5); i--) {
+			lines.add(indented(Alerts.ago(sightings.get(i).time) + ": " + sightings.get(i).text, GRAY, 10));
 		}
 		return lines;
 	}
 
-	/** Changes grouped by kind and block, each group with Find / Accept / Not damage. */
+	/** Changes of one kind to one block type. */
+	private record Group(Base.Kind kind, String name, BlockState icon, List<Long> keys, int nearest) {
+		String sentence() {
+			String what = name + (keys.size() > 1 ? " ×" + keys.size() : "");
+			String verb = switch (kind) {
+				case REMOVED -> " gone";
+				case ADDED -> " added by someone else";
+				case REPLACED -> "";
+			};
+			return what + verb + (nearest >= 0 ? " · nearest " + nearest + "m" : "");
+		}
+	}
+
+	/** Block changes grouped by kind and block, most important kind first, biggest groups first. */
+	private List<Group> groups() {
+		MinecraftClient mc = MinecraftClient.getInstance();
+		BlockPos me = mc.player != null && base.dimension.equals(BaseManager.dimensionKey(mc.world)) ? mc.player.getBlockPos() : null;
+		List<Group> result = new ArrayList<>();
+		for (Base.Kind kind : List.of(Base.Kind.REMOVED, Base.Kind.REPLACED, Base.Kind.ADDED)) {
+			Map<String, List<Long>> byName = new LinkedHashMap<>();
+			Map<String, BlockState> icons = new LinkedHashMap<>();
+			for (Map.Entry<Long, Base.Change> entry : base.changes.entrySet()) {
+				Base.Change change = entry.getValue();
+				if (change.kind() != kind) continue;
+				String name = switch (kind) {
+					case REMOVED -> BlockStates.name(change.was).getString();
+					case ADDED -> BlockStates.name(change.now).getString();
+					case REPLACED -> BlockStates.name(change.was).getString() + " → " + BlockStates.name(change.now).getString();
+				};
+				byName.computeIfAbsent(name, k -> new ArrayList<>()).add(entry.getKey());
+				icons.putIfAbsent(name, kind == Base.Kind.ADDED ? change.nowState() : change.wasState());
+			}
+			byName.entrySet().stream()
+					.sorted((a, b) -> Integer.compare(b.getValue().size(), a.getValue().size()))
+					.forEach(e -> result.add(new Group(kind, e.getKey(), icons.get(e.getKey()), e.getValue(), me == null ? -1
+							: (int) Math.sqrt(e.getValue().stream().mapToDouble(k -> BlockPos.fromLong(k).getSquaredDistance(me)).min().orElse(0)))));
+		}
+		return result;
+	}
+
+	/** Changes grouped by kind and block, each group with Show me / It's fine / Never count. */
 	private List<Line> damage() {
 		List<Line> lines = new ArrayList<>();
 		if (base.damageCount() == 0) {
 			lines.add(text("✔ Nothing has changed.", GREEN));
 			return lines;
 		}
-		lines.add(text("Find walks you there with markers that show through walls. Accept makes it the new normal. "
-				+ "Not damage also ignores that block type from now on. All of these can be undone.", GRAY));
+		lines.add(text("Only real changes are listed: Base Insurance ignores what servers fake (hidden ores, chests and frames out of sight, blocks still loading). "
+				+ "Show me marks it through walls. It's fine stops reporting it. Never count ignores that kind of block from now on. Everything can be undone.", GRAY));
 		lines.add(blank());
 
 		MinecraftClient mc = MinecraftClient.getInstance();
@@ -288,15 +386,15 @@ public class ReportScreen extends Screen {
 			if (groups.isEmpty()) continue;
 			int total = groups.values().stream().mapToInt(List::size).sum();
 			String title = switch (kind) {
-				case REMOVED -> "Removed";
-				case ADDED -> "Placed by someone else";
-				case REPLACED -> "Replaced";
+				case REMOVED -> "Gone";
+				case ADDED -> "Added by someone else";
+				case REPLACED -> "Swapped for something else";
 			};
 			List<Long> allOfKind = new ArrayList<>();
 			groups.values().forEach(allOfKind::addAll);
 			lines.add(new Line(Text.literal(title + " (" + total + ")"), ItemStack.EMPTY, 0xFF000000 | Overlay.color(kind), 0, true,
-					List.of(new Action("Find all", CYAN, () -> find(allOfKind, title, ItemStack.EMPTY)),
-							new Action("Accept all", ACCEPT, () -> acceptGroup(allOfKind, "all " + title.toLowerCase())))));
+					List.of(new Action("Show all", CYAN, () -> find(allOfKind, title, ItemStack.EMPTY), TIP_SHOW),
+							new Action("All fine", ACCEPT, () -> acceptGroup(allOfKind, "all " + title.toLowerCase()), TIP_FINE))));
 			groups.entrySet().stream()
 					.sorted((a, b) -> Integer.compare(b.getValue().size(), a.getValue().size()))
 					.forEach(group -> {
@@ -307,12 +405,14 @@ public class ReportScreen extends Screen {
 						String nearest = me == null ? "" : "  · nearest " + (int) Math.sqrt(keys.stream()
 								.mapToDouble(k -> BlockPos.fromLong(k).getSquaredDistance(me)).min().orElse(0)) + "m";
 						List<Action> actions = new ArrayList<>();
-						actions.add(new Action("Find", CYAN, () -> find(keys, name, icon)));
-						actions.add(new Action("Accept", ACCEPT, () -> acceptGroup(keys, name)));
-						// "Not damage" ignores the block that's there now (or, for removals, the one that went missing).
+						actions.add(new Action("Show me", CYAN, () -> find(keys, name, icon), TIP_SHOW));
+						actions.add(new Action("It's fine", ACCEPT, () -> acceptGroup(keys, name), TIP_FINE));
+						// "Never count" ignores the block that's there now (or, for removals, the one that went missing).
 						if (shown != null && !shown.isAir()) {
 							String blockId = Registries.BLOCK.getId(shown.getBlock()).toString();
-							actions.add(new Action("Not damage", NOT_DAMAGE, () -> notDamage(blockId)));
+							String blockName = shown.getBlock().getName().getString();
+							actions.add(new Action("Never count", NOT_DAMAGE, () -> notDamage(blockId),
+									"Changes to " + blockName + " never count from now on (Settings → Detection lists them)"));
 						}
 						lines.add(new Line(Text.empty().append(Text.literal(name + " ×" + keys.size()).styled(s -> s.withColor(WHITE)))
 								.append(Text.literal(nearest).styled(s -> s.withColor(GRAY))), icon, WHITE, 8, false, actions));
@@ -324,10 +424,10 @@ public class ReportScreen extends Screen {
 			List<String> allEntities = new ArrayList<>(base.entityChanges.keySet());
 			lines.add(new Line(Text.literal("Item frames, paintings & armor stands (" + allEntities.size() + ")"), ItemStack.EMPTY,
 					0xFF000000 | Overlay.ENTITY, 0, true,
-					List.of(new Action("Accept all", ACCEPT, () -> {
-						flash("Accepted " + BaseActions.acceptEntities(base, allEntities, "Accepted all entity changes") + " · Undo is available");
+					List.of(new Action("All fine", ACCEPT, () -> {
+						flash("Marked " + BaseActions.acceptEntities(base, allEntities, "Accepted all entity changes") + " as fine · Undo is available");
 						clearAndInit();
-					}))));
+					}, TIP_FINE))));
 			base.entityChanges.entrySet().stream()
 					.sorted(Comparator.comparingLong(e -> -e.getValue().firstSeen))
 					.forEach(e -> {
@@ -335,13 +435,14 @@ public class ReportScreen extends Screen {
 						Base.EntityChange change = e.getValue();
 						ItemStack icon = entityIcon(change.was);
 						String text = change.describe() + " at " + Alerts.pos(change.was.pos()) + " · "
-								+ (change.live ? "live" : "found on return") + ", " + Alerts.ago(change.firstSeen);
+								+ (change.live ? "while you were here" : "found when you came back") + ", " + Alerts.ago(change.firstSeen);
 						lines.add(new Line(Text.literal(text), icon, WHITE, 8, false, List.of(
-								new Action("Find", CYAN, () -> findPos(change.was.pos(), change.was.name, icon)),
-								new Action("Accept", ACCEPT, () -> {
-									flash("Accepted " + BaseActions.acceptEntities(base, List.of(key), "Accepted " + change.describe()) + " · Undo is available");
+								new Action("Show me", CYAN, () -> findPos(change.was.pos(), change.was.name, icon), TIP_SHOW),
+								new Action("It's fine", ACCEPT, () -> {
+									BaseActions.acceptEntities(base, List.of(key), "Accepted " + change.describe());
+									flash("Marked as fine: " + change.describe() + " · Undo is available");
 									clearAndInit();
-								}))));
+								}, TIP_FINE))));
 					});
 			lines.add(blank());
 		}
@@ -355,16 +456,16 @@ public class ReportScreen extends Screen {
 						BlockPos pos = BlockPos.fromLong(e.getKey());
 						Base.Change change = e.getValue();
 						String what = switch (change.kind()) {
-							case REMOVED -> BlockStates.name(change.was).getString() + " missing";
-							case ADDED -> BlockStates.name(change.now).getString() + " placed";
+							case REMOVED -> BlockStates.name(change.was).getString() + " gone";
+							case ADDED -> BlockStates.name(change.now).getString() + " added";
 							case REPLACED -> BlockStates.name(change.was).getString() + " is now " + BlockStates.name(change.now).getString();
 						};
 						ItemStack icon = BlockStates.icon(change.kind() == Base.Kind.ADDED ? change.nowState() : change.wasState());
 						lines.add(new Line(Text.literal(what + " at " + Alerts.pos(pos) + " (" + (int) Math.sqrt(pos.getSquaredDistance(me)) + "m) · "
-								+ (change.live ? "live" : "found on return") + ", " + Alerts.ago(change.firstSeen)), icon,
-								0xFF000000 | Overlay.color(change.kind()), 8, false,
-								List.of(new Action("Find", CYAN, () -> findPos(pos, what, icon)),
-										new Action("Accept", ACCEPT, () -> acceptGroup(List.of(e.getKey()), what)))));
+								+ (change.live ? "while you were here" : "found when you came back") + ", " + Alerts.ago(change.firstSeen)), icon,
+							0xFF000000 | Overlay.color(change.kind()), 8, false,
+							List.of(new Action("Show me", CYAN, () -> findPos(pos, what, icon), TIP_SHOW),
+									new Action("It's fine", ACCEPT, () -> acceptGroup(List.of(e.getKey()), what), TIP_FINE))));
 					});
 		}
 		return lines;
@@ -374,28 +475,29 @@ public class ReportScreen extends Screen {
 		List<Line> lines = new ArrayList<>();
 		List<Long> destroyed = destroyedContainers();
 		if (!destroyed.isEmpty()) {
-			lines.add(header("✖ Destroyed containers (" + destroyed.size() + ")", RED));
+			lines.add(header("✖ Destroyed (" + destroyed.size() + ")", RED));
 			for (long key : destroyed) {
 				Base.ContainerSnapshot snapshot = base.containers.get(key);
 				BlockPos pos = BlockPos.fromLong(key);
 				ItemStack icon = BlockStates.icon(BlockStates.parse(snapshot.block));
 				lines.add(new Line(Text.literal(BlockStates.name(snapshot.block).getString() + " at " + Alerts.pos(pos)
 						+ " · last contents (" + Alerts.time(snapshot.updated) + "):"), icon, WHITE, 8, false,
-						List.of(new Action("Find", CYAN, () -> findPos(pos, "Destroyed container", icon)))));
+						List.of(new Action("Show me", CYAN, () -> findPos(pos, "Destroyed container", icon), TIP_SHOW))));
 				addItems(lines, snapshot.items, 8, 28);
 			}
 			lines.add(blank());
 		}
 
 		List<Base.Event> thefts = base.events.stream().filter(e -> e.type == Base.EventType.CONTAINER).toList();
-		lines.add(header("⚠ Theft reports (" + thefts.size() + ")", thefts.isEmpty() ? GREEN : RED));
-		if (thefts.isEmpty()) lines.add(indented("Nothing missing from any container you've opened.", GRAY, 10));
+		lines.add(header("⚠ Items taken (" + thefts.size() + ")", thefts.isEmpty() ? GREEN : RED));
+		lines.add(indented(thefts.isEmpty() ? "Nothing missing from any chest you've opened."
+				: "Each time you open a chest it's checked against how you left it, once its contents have fully arrived.", GRAY, 10));
 		for (int i = thefts.size() - 1; i >= 0; i--) {
 			lines.add(indented("[" + Alerts.time(thefts.get(i).time) + "] " + thefts.get(i).text, YELLOW, 10));
 		}
 		lines.add(blank());
 
-		lines.add(header("▣ Containers on record (" + base.containers.size() + ")", GOLD));
+		lines.add(header("▣ On record (" + base.containers.size() + ")", GOLD));
 		if (base.containers.isEmpty()) {
 			lines.add(indented("Open the chests, barrels and shulker boxes in your base once to put their contents on record.", GRAY, 10));
 		}
@@ -408,7 +510,7 @@ public class ReportScreen extends Screen {
 					int total = snapshot.items.values().stream().mapToInt(Integer::intValue).sum();
 					lines.add(new Line(Text.literal(BlockStates.name(snapshot.block).getString() + " at " + Alerts.pos(pos)
 							+ " · " + total + " items, checked " + Alerts.ago(snapshot.updated)), icon, WHITE, 8, false,
-							List.of(new Action("Find", CYAN, () -> findPos(pos, BlockStates.name(snapshot.block).getString(), icon)))));
+							List.of(new Action("Show me", CYAN, () -> findPos(pos, BlockStates.name(snapshot.block).getString(), icon), TIP_SHOW))));
 				});
 		return lines;
 	}
@@ -432,7 +534,7 @@ public class ReportScreen extends Screen {
 		}
 		lines.add(new Line(Text.literal("To restore " + base.name + ": " + blocks + " blocks of " + needs.size() + " kinds"),
 				ItemStack.EMPTY, GOLD, 0, true, headerActions));
-		lines.add(text("Green: you're carrying enough. Yellow: enough in storage. Red: you'll need more. Find walks you to the storage.", GRAY));
+		lines.add(text("Green: you're carrying enough. Yellow: enough in your chests. Red: you'll need more. Show me marks the chest it's in.", GRAY));
 		if (added > 0) lines.add(text(Alerts.plural(added, "block") + " placed by someone else just need removing (orange in the overlay).", 0xFF000000 | Overlay.ADDED));
 		lines.add(blank());
 		for (Materials.Need need : needs) {
@@ -443,7 +545,7 @@ public class ReportScreen extends Screen {
 				ItemStack icon = new ItemStack(need.item());
 				lines.add(new Line(Text.literal("↳ " + source.label() + " at " + Alerts.pos(source.pos()) + " (" + (int) source.distance() + "m): "
 						+ source.count()), ItemStack.EMPTY, GRAY, 28, false,
-						List.of(new Action("Find", CYAN, () -> findPos(source.pos(), need.item().getName().getString(), icon)))));
+						List.of(new Action("Show me", CYAN, () -> findPos(source.pos(), need.item().getName().getString(), icon), "Marks the chest it's in"))));
 			}
 		}
 		return lines;
@@ -563,8 +665,8 @@ public class ReportScreen extends Screen {
 		// Header: title, and status badges.
 		context.drawTextWithShadow(textRenderer, Text.literal("⚑ ").styled(s -> s.withColor(CYAN)).append(title), PAD, 10, GOLD);
 		int percent = base.snapshotPercent();
-		int badgeX = badge(context, width - PAD, "Snapshot " + percent + "%", percent == 100 ? GREEN : YELLOW);
-		badge(context, badgeX - 4, base.damageCount() == 0 ? "Intact" : "Damaged · " + base.damageCount(), base.damageCount() == 0 ? GREEN : RED);
+		int badgeX = badge(context, width - PAD, percent == 100 ? "Fully checked" : "Checked " + percent + "%", percent == 100 ? GREEN : YELLOW);
+		badge(context, badgeX - 4, base.damageCount() == 0 ? "✔ All good" : "⚠ " + base.damageCount() + " changed", base.damageCount() == 0 ? GREEN : RED);
 
 		// Content panel.
 		int bottom = listBottom();
@@ -585,6 +687,11 @@ public class ReportScreen extends Screen {
 					x += 20;
 				}
 				context.drawText(textRenderer, row.text, x, textY, row.color, true);
+				if (row.bar >= 0) {
+					int bx0 = x, bx1 = Math.min(right - 4, x + 200), by = y + row.height - 7;
+					context.fill(bx0, by, bx1, by + 4, 0x40FFFFFF);
+					context.fill(bx0, by, bx0 + (int) ((bx1 - bx0) * Math.min(1, row.bar)), by + 4, row.color);
+				}
 				if (row.header) context.fill(left, y + 17, right, y + 18, (row.color & 0xFFFFFF) | 0x50000000);
 				// Action chips, right-aligned.
 				int ax = right;
@@ -596,7 +703,7 @@ public class ReportScreen extends Screen {
 					context.fill(ax - w, ay, ax, ay + 14, (action.color & 0xFFFFFF) | (over ? 0x70000000 : 0x30000000));
 					context.drawStrokedRectangle(ax - w, ay, w, 14, action.color);
 					context.drawTextWithShadow(textRenderer, action.label, ax - w + 4, ay + 3, over ? 0xFFFFFFFF : action.color);
-					if (ay + 14 > TOP - 4 && ay < bottom) hits.add(new Hit(ax - w, Math.max(ay, TOP - 4), ax, Math.min(ay + 14, bottom), action.run));
+					if (ay + 14 > TOP - 4 && ay < bottom) hits.add(new Hit(ax - w, Math.max(ay, TOP - 4), ax, Math.min(ay + 14, bottom), action.run, action.tip));
 					ax -= w + 4;
 				}
 			}
@@ -627,6 +734,16 @@ public class ReportScreen extends Screen {
 		context.drawStrokedRectangle(rightX - w, 6, w, 14, color);
 		context.drawTextWithShadow(textRenderer, text, rightX - w + 5, 9, color);
 		return rightX - w;
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+		super.render(context, mouseX, mouseY, delta);
+		for (Hit hit : hits) {
+			if (hit.tip != null && mouseX >= hit.x0 && mouseX < hit.x1 && mouseY >= hit.y0 && mouseY < hit.y1) {
+				context.drawOrderedTooltip(textRenderer, textRenderer.wrapLines(Text.literal(hit.tip), 220), mouseX, mouseY);
+			}
+		}
 	}
 
 	@Override

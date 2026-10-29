@@ -82,14 +82,27 @@ public final class SelfTest {
 
 	private static void tick(MinecraftClient client) {
 		if (client.player == null || client.world == null || client.getServer() == null) return;
+		if (AccuracyTest.finished()) return;
+		if (AccuracyTest.running()) {
+			AccuracyTest.tick(client);
+			return;
+		}
+		// The window losing focus (you using the computer meanwhile) mustn't pause the world under the test.
+		client.options.pauseOnLostFocus = false;
 		tick++;
 		BaseInsuranceClient mod = BaseInsuranceClient.INSTANCE;
+		// -Dbaseinsurance.accuracytest=true: straight to the accuracy tests.
+		if (Boolean.getBoolean("baseinsurance.accuracytest") && tick == 100) {
+			AccuracyTest.begin(client.player.getBlockPos().add(100, 0, 0));
+			return;
+		}
 		switch (tick) {
 			case 100 -> {
 				origin = client.player.getBlockPos();
 				chest = origin.add(2, 0, 2);
 				log("In world at " + Alerts.pos(origin) + "; creating base");
-				client.player.networkHandler.sendChatCommand("bi delete Test confirm");
+				// Bases a stopped run left behind (they'd overlap these and take their alerts).
+				for (String old : new String[] {"Test", "Home", "Hide", "Big", "Legacy"}) client.player.networkHandler.sendChatCommand("bi delete " + old + " confirm");
 				client.player.networkHandler.sendChatCommand("bi create Test 10 3 6");
 				client.player.networkHandler.sendChatCommand("bi create");
 			}
@@ -272,7 +285,8 @@ public final class SelfTest {
 					w.setBlockState(origin.add(-8, 0, 8), Blocks.COBBLESTONE.getDefaultState());
 					w.setBlockState(origin.add(-8, 1, 8), Blocks.COBBLESTONE.getDefaultState());
 					w.setBlockState(origin.add(-9, 0, 8), Blocks.COBBLESTONE.getDefaultState());
-					w.setBlockState(origin.add(-12, 0, 12), Blocks.LAVA.getDefaultState());
+					// In plain view (not behind the cobblestone): only what you can see counts.
+				w.setBlockState(origin.add(-12, 0, -12), Blocks.LAVA.getDefaultState());
 				});
 			}
 			case 1130 -> {
@@ -319,7 +333,7 @@ public final class SelfTest {
 			}
 			case 1380 -> screenshot(client, "11_report_damage");
 			case 1385 -> {
-				if (client.currentScreen instanceof ReportScreen report) report.testAction("Not damage");
+				if (client.currentScreen instanceof ReportScreen report) report.testAction("Never count");
 			}
 			case 1390 -> {
 				Base big = mod.manager.get("Big");
@@ -337,7 +351,7 @@ public final class SelfTest {
 				if (client.currentScreen instanceof ReportScreen report) report.showTab("DAMAGE");
 			}
 			case 1400 -> {
-				if (client.currentScreen instanceof ReportScreen report) report.testAction("Find");
+				if (client.currentScreen instanceof ReportScreen report) report.testAction("Show me");
 			}
 			case 1404 -> {
 				check("Find starts the damage locator and closes the report", DamageLocator.active() && client.currentScreen == null);
@@ -402,6 +416,7 @@ public final class SelfTest {
 				});
 			}
 			case 1830 -> server(client, w -> w.setBlockState(origin.add(-5, -1, -6), Blocks.AIR.getDefaultState()));
+			case 1850, 1870 -> log("  TNT hole: " + mod.scanner.debug(client, mod.manager.get("Test"), origin.add(-5, -1, -6)));
 			case 1890 -> {
 				var events = mod.manager.get("Test").events;
 				String last = events.stream().filter(e -> e.type == Base.EventType.LIVE_DAMAGE).reduce((a, b) -> b).map(e -> e.text).orElse("");
@@ -513,6 +528,10 @@ public final class SelfTest {
 				}
 			}
 			case 2233 -> {
+				if (!net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("hoardeye")) {
+					log("Hoard Eye hand-off: skipped (Hoard Eye isn't installed in this test)");
+					break;
+				}
 				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("hoardeye-fetch.json");
 				check("Rebuild tab hands the materials to Hoard Eye", java.nio.file.Files.exists(handOff));
 				try {
@@ -523,6 +542,7 @@ public final class SelfTest {
 				}
 			}
 			case 2245 -> {
+				if (!net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("hoardeye")) break;
 				java.nio.file.Path handOff = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("hoardeye-fetch.json");
 				check("Hoard Eye picked up the handed-over fetch list", !java.nio.file.Files.exists(handOff));
 				screenshot(client, "16_fetch_from_rebuild");
@@ -532,15 +552,15 @@ public final class SelfTest {
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");
 				for (Base.Event event : base.events) log("  " + event.type + ": " + event.text);
-				log("DONE");
-				client.scheduleStop();
+				// Then the accuracy tests: what servers fake must never be reported.
+				AccuracyTest.begin(origin.add(100, 0, 0));
 			}
 			default -> {}
 		}
 	}
 
 	/** Points the camera at the centre of a block. */
-	private static void aimAt(MinecraftClient client, BlockPos target) {
+	static void aimAt(MinecraftClient client, BlockPos target) {
 		Vec3d eye = client.player.getEyePos();
 		Vec3d d = Vec3d.ofCenter(target).subtract(eye);
 		double horizontal = Math.sqrt(d.x * d.x + d.z * d.z);
@@ -588,21 +608,25 @@ public final class SelfTest {
 		if (client.currentScreen instanceof ReportScreen report) report.showTab(tab);
 	}
 
-	private static void server(MinecraftClient client, Consumer<ServerWorld> action) {
+	static void server(MinecraftClient client, Consumer<ServerWorld> action) {
 		IntegratedServer server = client.getServer();
 		server.execute(() -> action.accept(server.getOverworld()));
 	}
 
-	private static void screenshot(MinecraftClient client, String name) {
+	static void screenshot(MinecraftClient client, String name) {
 		ScreenshotRecorder.saveScreenshot(client.runDirectory, "bi_" + name + ".png", client.getFramebuffer(), 1, message -> {});
 		log("Screenshot " + name);
 	}
 
-	private static void check(String what, boolean ok) {
+	static int passed, failed;
+
+	static void check(String what, boolean ok) {
+		if (ok) passed++;
+		else failed++;
 		log((ok ? "PASS " : "FAIL ") + what);
 	}
 
-	private static void log(String message) {
+	static void log(String message) {
 		BaseInsuranceClient.LOGGER.info("[SELFTEST] {}", message);
 	}
 }

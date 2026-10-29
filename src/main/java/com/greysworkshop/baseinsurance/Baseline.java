@@ -25,10 +25,13 @@ import java.util.zip.GZIPOutputStream;
  * Each block also has a "trusted" bit: set once it has been seen up close (within the trust radius), where
  * servers send real blocks. Untrusted blocks may hold whatever the server faked from a distance, so they're
  * never reported as changed; the first close look replaces them with the truth.
+ * <p>
+ * And a "seen" bit: set when it was trusted while exposed (not sealed in on all sides). Anti-xray fakes exactly the
+ * sealed-in blocks, so a block trusted while sealed in (by version 2) may hold a fake.
  */
 public final class Baseline {
-	/** Version 2 added trusted bits. Version 1 snapshots load as all-untrusted and heal themselves. */
-	private static final int VERSION = 2;
+	/** Version 2 added trusted bits, version 3 seen bits. Older snapshots load with fewer and heal themselves. */
+	private static final int VERSION = 3;
 
 	public static final class Section {
 		/** Palette entries can be null if a saved block no longer exists in the game. */
@@ -37,13 +40,44 @@ public final class Baseline {
 		short[] data;
 		/** Blocks whose snapshot value was seen up close. */
 		final java.util.BitSet trusted = new java.util.BitSet(4096);
+		/** Blocks whose snapshot value was seen up close while exposed, so it can't be an anti-xray fake. */
+		final java.util.BitSet seen = new java.util.BitSet(4096);
+		/** Blocks whose snapshot value was seen in clear sight within {@link Sight#CONTAINER_RANGE}, where hiders show all. */
+		final java.util.BitSet clear = new java.util.BitSet(4096);
 
 		public boolean isTrusted(int index) {
 			return trusted.get(index);
 		}
 
+		public boolean isSeen(int index) {
+			return seen.get(index);
+		}
+
+		public boolean isClear(int index) {
+			return clear.get(index);
+		}
+
+		/** Seen in clear sight, close by: not even a container hider could have hidden what's there. */
+		public void seeClearly(int index) {
+			see(index);
+			clear.set(index);
+		}
+
 		public void trust(int index) {
 			trusted.set(index);
+		}
+
+		/** Trusted, and exposed when it was: a real block, not a fake. */
+		public void see(int index) {
+			trusted.set(index);
+			seen.set(index);
+		}
+
+		/** Forgets the block's value: the next close, exposed look takes whatever is there. */
+		public void forget(int index) {
+			trusted.clear(index);
+			seen.clear(index);
+			clear.clear(index);
 		}
 
 		public BlockState get(int index) {
@@ -84,7 +118,7 @@ public final class Baseline {
 		if (section == null) return;
 		int index = index(pos.getX(), pos.getY(), pos.getZ());
 		section.set(index, state);
-		section.trust(index);
+		section.seeClearly(index);
 	}
 
 	public static Section capture(ClientWorld world, long key) {
@@ -132,6 +166,11 @@ public final class Baseline {
 				long[] trusted = section.trusted.toLongArray();
 				out.writeShort(trusted.length);
 				for (long word : trusted) out.writeLong(word);
+				for (java.util.BitSet bits : new java.util.BitSet[] {section.seen, section.clear}) {
+					long[] words = bits.toLongArray();
+					out.writeShort(words.length);
+					for (long word : words) out.writeLong(word);
+				}
 			}
 		}
 		Files.move(temp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -160,6 +199,13 @@ public final class Baseline {
 					long[] words = new long[in.readUnsignedShort()];
 					for (int w = 0; w < words.length; w++) words[w] = in.readLong();
 					section.trusted.or(java.util.BitSet.valueOf(words));
+				}
+				if (version >= 3) {
+					for (java.util.BitSet bits : new java.util.BitSet[] {section.seen, section.clear}) {
+						long[] words = new long[in.readUnsignedShort()];
+						for (int w = 0; w < words.length; w++) words[w] = in.readLong();
+						bits.or(java.util.BitSet.valueOf(words));
+					}
 				}
 				baseline.sections.put(key, section);
 			}

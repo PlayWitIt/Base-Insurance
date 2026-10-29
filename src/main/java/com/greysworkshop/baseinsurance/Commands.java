@@ -73,6 +73,16 @@ public final class Commands {
 										.then(argument("down", integer(0, 384))
 												.then(argument("up", integer(0, 384))
 														.executes(c -> create(c, getInteger(c, "radius"), getInteger(c, "down"), getInteger(c, "up"))))))))
+				.then(literal("resize")
+						.then(argument("name", word()).suggests(bases).executes(c -> {
+							Base base = mod().manager.get(getString(c, "name"));
+							if (base == null) {
+								c.getSource().sendError(Text.literal("No base called " + getString(c, "name") + "."));
+								return 0;
+							}
+							mod().openLater(MapScreen.forEdit(base));
+							return 1;
+						})))
 				.then(literal("delete")
 						.then(argument("name", word()).suggests(bases)
 								.executes(c -> confirmHint(c, "delete", "permanently deletes this base and its history"))
@@ -206,14 +216,38 @@ public final class Commands {
 		if (!BaseManager.isValidName(name)) return "Names can use letters, numbers, - and _ (up to 32).";
 		if (mod().manager.worldKey() == null) return "Join a world or server first.";
 		if (mod().manager.get(name) != null) return "You already have a base called " + name + ".";
+		return validateSize(volume);
+	}
+
+	public static String validateSize(long volume) {
 		if (volume > MAX_VOLUME) return "That's " + volume / 1_000_000 + " million blocks; the limit is 16 million. Make it smaller or less tall.";
 		return null;
+	}
+
+	/**
+	 * Gives a base new bounds. What's still inside keeps its snapshot, changes and records; what's left outside is
+	 * dropped; new ground is snapshotted as you get near it, like a new base (so it can't raise false alarms).
+	 */
+	public static void resizeBase(Base base, int minX, int maxX, int minZ, int maxZ, int minY, int maxY, java.util.function.Consumer<Text> feedback) {
+		ClientWorld world = MinecraftClient.getInstance().world;
+		String before = base.sizeText();
+		base.minX = Math.min(minX, maxX);
+		base.maxX = Math.max(minX, maxX);
+		base.minZ = Math.min(minZ, maxZ);
+		base.maxZ = Math.max(minZ, maxZ);
+		base.minY = Math.max(world.getBottomY(), Math.min(minY, maxY));
+		base.maxY = Math.min(world.getTopYInclusive(), Math.max(minY, maxY));
+		base.reshaped();
+		base.log(Base.EventType.CREATED, "Resized from " + before + " to " + base.sizeText());
+		mod().manager.save(base, true);
+		feedback.accept(Text.literal("⚑ " + base.name + " is now " + base.sizeText() + " blocks. New ground is snapshotted as you get near it.").formatted(Formatting.GREEN));
 	}
 
 	/** Creates and starts snapshotting a base. Returns an error message, or null on success. */
 	public static String createBase(String name, ClientWorld world, BlockPos center, int minX, int maxX, int minZ, int maxZ,
 			int minY, int maxY, java.util.function.Consumer<Text> feedback) {
 		Base base = new Base();
+		base.rules = Base.RULES;
 		base.name = name;
 		base.dimension = BaseManager.dimensionKey(world);
 		base.minX = Math.min(minX, maxX);

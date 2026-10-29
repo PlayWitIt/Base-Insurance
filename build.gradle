@@ -42,6 +42,7 @@ java {
 jar {
 	exclude 'com/greysworkshop/baseinsurance/SelfTest*'
 	exclude 'com/greysworkshop/baseinsurance/MapTest*'
+	exclude 'com/greysworkshop/baseinsurance/AccuracyTest*'
 }
 
 loom {
@@ -50,6 +51,12 @@ loom {
 			client()
 			name = "Self Test"
 			vmArgs "-Dbaseinsurance.selftest=true", "-Xmx1536m"
+			runDir "run"
+		}
+		accuracyTest {
+			client()
+			name = "Accuracy Test"
+			vmArgs "-Dbaseinsurance.selftest=true", "-Dbaseinsurance.accuracytest=true", "-Xmx1536m"
 			runDir "run"
 		}
 		mapTest {

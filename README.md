@@ -20,14 +20,33 @@ friends, and where it last saw players shows on the map.
 Base Insurance, Hoard Eye), so you can turn something off before you join a world, and opens each one's full settings.
 
 ## How it works
-1. **Insure a base.** Run `/bi create` and draw the area on the map.
-2. **Walk around it once.** Servers (especially anarchy servers with anti-xray or anti-freecam) fake blocks far away,
-   so only blocks within the trust radius of you are trusted. The HUD shows snapshot progress and points to the parts you haven't seen yet.
+1. **Insure a base.** Run `/bi create` and draw the area on the map. Change it any time with **Resize** in its report
+   (or `/bi resize <name>`): drag the edges or corners, move it, set its bottom and top.
+2. **Walk around it once.** Everything within 48 blocks of you is checked, walls and rooms out of sight included. The
+   report and the map show how much of the base has been checked; the HUD points to the parts still to do.
 3. **Open your chests** so their contents are on record.
-4. **Get told what changed,** live or when you come back. In `/bi report` you can **Find** changes (markers through walls), **Accept** them, or mark a block type as **Not damage**. Everything can be undone.
+4. **Get told what changed,** live or when you come back. In the report: **Show me** marks a change through walls,
+   **It's fine** stops reporting it, **Never count** ignores that kind of block from now on. Everything can be undone.
 
 It also has a map of everything you've explored, a rebuild materials planner, a player tripwire, hopper-aware theft checks, and
 tracking of item frames, armor stands and paintings. `/bi guide` explains everything in the game.
+
+## Only real changes
+Servers lie to clients, and Base Insurance knows how, on any server:
+- **Anti-xray** (Paper, Orebfuscator and the like) swaps blocks that are sealed in on every side for stone, ores,
+  obsidian or chests. Sealed-in blocks are never judged, and a block is only put in the snapshot while it has an
+  open side, so a fake never gets in.
+- **Chest and entity hiders** (anti-ESP) hide chests, item frames and the like when you can't see them or are far off.
+  Those only count as gone when they're within 16 blocks and in plain view, and a chest that comes into view where it
+  was hidden isn't "new".
+- **Chunks arrive in stages** and blocks get corrected: a difference has to still be there a moment later.
+- **Your own doing** isn't damage: blocks you break or place (and what falls or drops off because of it), buckets,
+  piston doors, plants growing, crops, coral dying, concrete setting, ice and snow, copper ageing.
+- **Chests** are only compared like for like: the screen has to be that chest's (not a server menu that opened
+  instead), its contents must have fully arrived, and a double chest that's now single is just recorded afresh.
+
+The self-test proves each of these: it shows the client what a lying server would and checks nothing is reported,
+while real griefing (in view or behind a wall) still is.
 
 ## The map
 Everything you explore is drawn into a map as chunks load, in vanilla map colours with hill shading, and saved per
@@ -35,7 +54,9 @@ server and dimension, so it keeps growing every time you play.
 - **Minimap** in the top-right corner while you play: your bases (green intact, red damaged), nearby players and your
   coordinates. Zoom it with **-** and **=**, hide it with `/bi minimap`. It can turn with you, change corner and size
   in Settings → Map, and moves down out of the way of potion effect icons.
-- **Full map** with **M**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
+- **M** cycles what's on screen: the full map, then Naughty or Nice's trail radar (if you have it), then the minimap,
+  then nothing, then the map again. Esc on the map just closes it.
+- **Full map**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
   zoom from 16 pixels per block out to 32 blocks per pixel. Click a base for its report.
 - Works on servers that send wrong surface heights with their chunks (common on older servers joined through
   ViaVersion): the map checks them and finds the ground itself. Chunks missed while joining are picked up a moment later.
@@ -64,5 +85,6 @@ All `/bi` commands are client-side and never reach the server.
 
 ## Building
 Requires JDK 21. Run `./gradlew build`; the jar goes to `build/libs/`.
-`./gradlew runSelfTest` runs a scripted in-game test (35 checks) that saves screenshots to `run/screenshots/`.
+`./gradlew runSelfTest` runs a scripted in-game test that saves screenshots to `run/screenshots/`, ending with the
+accuracy tests (`./gradlew runAccuracyTest` runs those alone, in about a minute).
 `./gradlew runMapTest` travels across a normal world and checks the map and minimap (10 checks, half the trip with the server's surface heights blanked out).

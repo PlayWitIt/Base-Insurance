@@ -27,7 +27,12 @@ public final class ChangeFilter {
 			Blocks.PUMPKIN, Blocks.MELON, Blocks.CHORUS_PLANT, Blocks.CHORUS_FLOWER,
 			Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD, Blocks.AMETHYST_CLUSTER,
 			Blocks.POINTED_DRIPSTONE, Blocks.SWEET_BERRY_BUSH, Blocks.NETHER_WART, Blocks.COCOA, Blocks.FROGSPAWN,
-			Blocks.TURTLE_EGG, Blocks.BROWN_MUSHROOM, Blocks.RED_MUSHROOM, Blocks.SCULK_VEIN
+			Blocks.TURTLE_EGG, Blocks.BROWN_MUSHROOM, Blocks.RED_MUSHROOM, Blocks.SCULK_VEIN,
+			Blocks.SNIFFER_EGG, Blocks.LEAF_LITTER, Blocks.WILDFLOWERS, Blocks.PINK_PETALS, Blocks.BUSH, Blocks.FIREFLY_BUSH,
+			Blocks.SHORT_DRY_GRASS, Blocks.TALL_DRY_GRASS, Blocks.DEAD_BUSH, Blocks.HANGING_ROOTS, Blocks.SPORE_BLOSSOM,
+			Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.SMALL_DRIPLEAF, Blocks.MOSS_CARPET, Blocks.PALE_MOSS_CARPET,
+			Blocks.PALE_HANGING_MOSS, Blocks.CRIMSON_ROOTS, Blocks.WARPED_ROOTS, Blocks.NETHER_SPROUTS, Blocks.CRIMSON_FUNGUS,
+			Blocks.WARPED_FUNGUS, Blocks.TORCHFLOWER_CROP, Blocks.PITCHER_CROP, Blocks.PITCHER_PLANT
 	);
 
 	/** Fire, snow and similar that appear and vanish with the weather. */
@@ -48,6 +53,20 @@ public final class ChangeFilter {
 		group(4, Blocks.ANVIL, Blocks.CHIPPED_ANVIL, Blocks.DAMAGED_ANVIL);
 		group(5, Blocks.NETHERRACK, Blocks.CRIMSON_NYLIUM, Blocks.WARPED_NYLIUM);
 		group(6, Blocks.REDSTONE_ORE, Blocks.DEEPSLATE_REDSTONE_ORE);
+		// Coral dies out of water, and concrete powder sets in it.
+		int id = 7;
+		for (String coral : new String[] {"tube", "brain", "bubble", "fire", "horn"}) {
+			for (String form : new String[] {"_coral", "_coral_block", "_coral_fan", "_coral_wall_fan"}) {
+				group(id++, block(coral + form), block("dead_" + coral + form));
+			}
+		}
+		for (net.minecraft.util.DyeColor color : net.minecraft.util.DyeColor.values()) {
+			group(id++, block(color.asString() + "_concrete_powder"), block(color.asString() + "_concrete"));
+		}
+	}
+
+	private static Block block(String path) {
+		return Registries.BLOCK.get(Identifier.ofVanilla(path));
 	}
 
 	private ChangeFilter() {}
@@ -81,7 +100,7 @@ public final class ChangeFilter {
 		return state.isAir() || !state.getFluidState().isEmpty() || isNatural(state);
 	}
 
-	private static boolean isRock(BlockState state) {
+	static boolean isRock(BlockState state) {
 		return state.isIn(BlockTags.BASE_STONE_OVERWORLD) || state.isIn(BlockTags.BASE_STONE_NETHER)
 				|| state.isIn(BlockTags.COAL_ORES) || state.isIn(BlockTags.IRON_ORES) || state.isIn(BlockTags.GOLD_ORES)
 				|| state.isIn(BlockTags.COPPER_ORES) || state.isIn(BlockTags.REDSTONE_ORES) || state.isIn(BlockTags.LAPIS_ORES)
@@ -115,8 +134,8 @@ public final class ChangeFilter {
 	private static boolean isNatural(BlockState state) {
 		BIConfig config = BIConfig.INSTANCE;
 		Block block = state.getBlock();
-		if (config.ignorePlants && (PLANTS.contains(block)
-				|| state.isIn(BlockTags.SAPLINGS) || state.isIn(BlockTags.LEAVES) || state.isIn(BlockTags.CROPS))) return true;
+		if (config.ignorePlants && (PLANTS.contains(block) || state.isIn(BlockTags.SAPLINGS) || state.isIn(BlockTags.LEAVES)
+				|| state.isIn(BlockTags.CROPS) || state.isIn(BlockTags.FLOWERS) || state.isIn(BlockTags.REPLACEABLE_BY_TREES))) return true;
 		if (config.ignoreWeather && WEATHER.contains(block)) return true;
 		if (config.ignorePistons && PISTON_PARTS.contains(block)) return true;
 		if (BIConfig.INSTANCE.ignoredBlocks.isEmpty()) return false;

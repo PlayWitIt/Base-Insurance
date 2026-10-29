@@ -71,7 +71,11 @@ public final class BIConfig {
 	 * Only blocks within this distance of you are snapshotted and compared. Servers often fake blocks further
 	 * away (anti-xray, anti-freecam); up close they have to send the real ones.
 	 */
-	public int trustRadius = 32;
+	public int trustRadius = 48;
+	/** Set once 1.16.0 has raised the old default trust radius (32) to 48. */
+	public boolean radiusRaised = false;
+	/** Learned per server: how far off it sends chests (and frames) you can't see. See {@link ServerHabits}. */
+	public java.util.Map<String, Double> serverReach = new java.util.HashMap<>();
 	/** How long a block you broke or placed counts as your own edit. */
 	public int selfEditSeconds = 15;
 	public boolean ignorePlants = true;
@@ -80,7 +84,7 @@ public final class BIConfig {
 	public boolean ignoreOreSwaps = true;
 	/** Recognise servers hiding underground terrain (sending air) and don't report it as changes. */
 	public boolean smartTerrain = true;
-	/** Ignore blocks completely surrounded by solid blocks (nobody can see them; anti-xray fakes them). */
+	/** No longer used: sealed-in blocks are never judged (see {@link Sight}). Kept so old settings files load. */
 	public boolean ignoreHidden = true;
 	public boolean ignorePistons = true;
 	public boolean trackContainers = true;
@@ -168,6 +172,7 @@ public final class BIConfig {
 			if (loaded != null) {
 				if (loaded.friends == null) loaded.friends = new ArrayList<>();
 				if (loaded.friendNotes == null) loaded.friendNotes = new java.util.HashMap<>();
+				if (loaded.serverReach == null) loaded.serverReach = new java.util.HashMap<>();
 				if (loaded.skippedVersion == null) loaded.skippedVersion = "";
 				if (loaded.ignoredBlocks == null) loaded.ignoredBlocks = new ArrayList<>();
 				if (loaded.alertStyle == null) loaded.alertStyle = AlertStyle.CHAT;
@@ -175,6 +180,11 @@ public final class BIConfig {
 				if (loaded.minimapCorner == null) loaded.minimapCorner = Corner.TOP_RIGHT;
 				if (!(loaded.minimapZoom >= Minimap.MIN_ZOOM && loaded.minimapZoom <= Minimap.MAX_ZOOM)) loaded.minimapZoom = 1;
 				loaded.minimapSize = Math.max(64, Math.min(256, loaded.minimapSize));
+				if (!loaded.radiusRaised) {
+					// 1.16.0 judges blocks by what can't be faked, so it can safely look further: 32 (the old default) → 48.
+					if (loaded.trustRadius == 32) loaded.trustRadius = 48;
+					loaded.radiusRaised = true;
+				}
 				INSTANCE = loaded;
 			}
 		} catch (IOException | RuntimeException e) {

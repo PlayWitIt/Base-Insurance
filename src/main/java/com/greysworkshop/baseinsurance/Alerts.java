@@ -121,9 +121,9 @@ public final class Alerts {
 			}
 		}
 		StringBuilder sb = new StringBuilder();
-		if (r > 0) sb.append(r).append(" removed (").append(topCounts(removed, 3)).append(")");
-		if (a > 0) sb.append(sb.isEmpty() ? "" : ", ").append(a).append(" placed (").append(topCounts(added, 3)).append(")");
-		if (p > 0) sb.append(sb.isEmpty() ? "" : ", ").append(p).append(" replaced (").append(topCounts(replaced, 2)).append(")");
+		if (r > 0) sb.append(topCounts(removed, 3)).append(" gone");
+		if (a > 0) sb.append(sb.isEmpty() ? "" : ", ").append(topCounts(added, 3)).append(" added");
+		if (p > 0) sb.append(sb.isEmpty() ? "" : ", ").append(topCounts(replaced, 2)).append(" swapped");
 		return sb.toString();
 	}
 }

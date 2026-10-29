@@ -150,6 +150,18 @@ public final class BaseManager {
 								+ " that came from blocks seen from far away");
 						base.baselineDirty = true;
 					}
+					if (base.rules < Base.RULES) {
+						// Changes from before 1.16.0 could come from servers' fakes (anti-xray, hidden chests and frames).
+						// Look at everything again under the new rules; real damage is found again, quietly.
+						int cleared = base.changes.size() + base.entityChanges.size();
+						base.changes.clear();
+						base.entityChanges.clear();
+						base.rechecking = true;
+						base.rules = Base.RULES;
+						if (cleared > 0) base.log(Base.EventType.ACCEPTED, "Base Insurance 1.16.0 re-checks " + Alerts.plural(cleared, "old change")
+								+ " with its new rules: only what you can see for yourself counts now");
+						base.dirty = true;
+					}
 					bases.add(base);
 				} catch (IOException | RuntimeException e) {
 					BaseInsuranceClient.LOGGER.error("Could not load base {}", file, e);
@@ -196,7 +208,7 @@ public final class BaseManager {
 		for (Base base : bases) save(base, includeSnapshots);
 	}
 
-	private void save(Base base, boolean includeSnapshot) {
+	void save(Base base, boolean includeSnapshot) {
 		try {
 			Files.createDirectories(dir());
 			if (base.dirty) {

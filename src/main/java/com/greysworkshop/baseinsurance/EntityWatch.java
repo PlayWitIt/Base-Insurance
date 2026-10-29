@@ -27,13 +27,16 @@ import java.util.Set;
 /**
  * Watches item frames (map art!), armor stands and paintings in bases, within the trust radius like blocks.
  * Reports ones that disappear or whose contents change, ignoring ones you just hit or used yourself.
+ * <p>
+ * Servers that hide entities out of sight (anti-ESP) make them vanish for the client, so one only counts as gone
+ * or changed when its spot is in clear line of sight and close by, and stays that way for a few scans.
  */
 public final class EntityWatch {
-	private static final int SCAN_INTERVAL = 20;
+	private static final int SCAN_INTERVAL = 10;
 	/** An entity you hit or used counts as yours for this long. */
 	private static final int SELF_TICKS = 300;
-	/** A recorded entity must be missing on this many scans in a row: entities load in a little after blocks. */
-	private static final int MISSING_SCANS = 2;
+	/** A recorded entity must be missing (or changed) on this many scans in a row: entities load in a little after blocks. */
+	private static final int MISSING_SCANS = 3;
 
 	private final BaseManager manager;
 	private final Scanner scanner;
@@ -128,6 +131,10 @@ public final class EntityWatch {
 			if (entity.getEyePos().distanceTo(eye) > radius || !scanner.settled(entity.getBlockX() >> 4, entity.getBlockZ() >> 4)) continue;
 			String key = key(entity);
 			seen.add(key);
+			toCheck(base).remove(key);
+			// Measured as judgeable() measures it.
+			double distance = Vec3d.ofCenter(entity.getBlockPos()).distanceTo(eye);
+			if (distance > ServerHabits.entities() && Sight.occluded(world, eye, entity.getBlockPos())) ServerHabits.sawEntity(key, distance);
 			missing.remove(base.name + key);
 			Base.EntityRecord now = record(entity);
 			Base.EntityRecord was = base.entities.get(key);
@@ -141,13 +148,17 @@ public final class EntityWatch {
 				continue;
 			}
 			Base.EntityChange change = base.entityChanges.get(key);
+			if (!was.detail().equals(now.detail()) && !judgeable(client, world, eye, was.pos())) continue;
 			if (was.detail().equals(now.detail())) {
+				missing.remove(base.name + key + "~");
 				// Same contents; an armor stand may just have been pushed, so keep its position current.
 				if (was.x != now.x || was.y != now.y || was.z != now.z) {
 					base.entities.put(key, now);
 					base.dirty = true;
 				}
 				if (change != null) {
+					// Counted as gone, and here it is again: this server hid it.
+					if (change.now == null) ServerHabits.entityCameBack();
 					base.entityChanges.remove(key);
 					base.dirty = true;
 				}
@@ -160,6 +171,8 @@ public final class EntityWatch {
 				}
 				continue;
 			}
+			if (missing.merge(base.name + key + "~", 1, Integer::sum) < MISSING_SCANS) continue;
+			missing.remove(base.name + key + "~");
 			found.add(key);
 			base.entityChanges.put(key, newChange(client, was, now, live));
 			base.dirty = true;
@@ -172,6 +185,13 @@ public final class EntityWatch {
 			if (seen.contains(key)) continue;
 			if (Vec3d.ofCenter(was.pos()).distanceTo(eye) > radius || !world.isChunkLoaded(was.x >> 4, was.z >> 4)
 					|| !scanner.settled(was.x >> 4, was.z >> 4)) continue;
+			if (!isSelf(key) && !judgeable(client, world, eye, was.pos())) {
+				// Gone from out of sight, no break sound: maybe hidden. One to go and look at, not damage.
+				missing.remove(base.name + key);
+				toCheck(base).put(key, was);
+				continue;
+			}
+			toCheck(base).remove(key);
 			if (isSelf(key)) {
 				base.entities.remove(key);
 				base.entityChanges.remove(key);
@@ -191,6 +211,22 @@ public final class EntityWatch {
 		}
 
 		if (!found.isEmpty()) announce(base, found, live);
+	}
+
+	private final Map<Base, Map<String, Base.EntityRecord>> toCheck = new HashMap<>();
+
+	/** Item frames, armor stands and paintings that looked gone from out of sight, by key: listed to go and look at. */
+	public Map<String, Base.EntityRecord> toCheck(Base base) {
+		return toCheck.computeIfAbsent(base, b -> new HashMap<>());
+	}
+
+	/** Close enough and in plain sight that a server hiding entities would still show it. */
+	private static boolean judgeable(MinecraftClient client, ClientWorld world, Vec3d eye, net.minecraft.util.math.BlockPos pos) {
+		// Or as far off as this server has been seen sending them out of sight (most send all), or anywhere in range if
+		// the server played its break sound there (a hider doesn't).
+		double distance = Vec3d.ofCenter(pos).distanceTo(eye);
+		return distance <= ServerHabits.entities() || distance <= Sight.CONTAINER_RANGE && Sight.visible(world, client.player, eye, pos)
+				|| Breaks.entityProven(pos);
 	}
 
 	private Base.EntityChange newChange(MinecraftClient client, Base.EntityRecord was, Base.EntityRecord now, boolean live) {
@@ -260,6 +296,7 @@ public final class EntityWatch {
 
 	public void reset() {
 		missing.clear();
+		toCheck.clear();
 		pending.clear();
 		selfTouched.clear();
 		for (Base base : manager.all()) base.entitiesWatched = false;

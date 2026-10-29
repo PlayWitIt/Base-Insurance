@@ -30,5 +30,8 @@
 		"modmenu": "*",
 		"hoardeye": "*"
 	},
-	"icon": "assets/baseinsurance/icon.png"
+	"icon": "assets/baseinsurance/icon.png",
+	"mixins": [
+		"baseinsurance.mixins.json"
+	]
 }

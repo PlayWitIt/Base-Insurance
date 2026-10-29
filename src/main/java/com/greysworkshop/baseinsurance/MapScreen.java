@@ -48,6 +48,10 @@ public class MapScreen extends Screen {
 
 	private final boolean createMode;
 	private final String initialName;
+	/** The base being resized, or null when making a new one. */
+	private final Base editing;
+	/** Resizing: the bottom and top (absolute Y). */
+	private int editMinY, editMaxY;
 
 	// Create mode: the proposed area and height range.
 	private int selMinX, selMaxX, selMinZ, selMaxZ;
@@ -65,13 +69,15 @@ public class MapScreen extends Screen {
 	private final List<int[]> baseListRows = new ArrayList<>();
 
 	public MapScreen() {
-		this(false, null);
+		this(false, null, null);
 	}
 
-	private MapScreen(boolean createMode, String name) {
-		super(Text.translatable(createMode ? "baseinsurance.map.create_title" : "baseinsurance.map.title"));
+	private MapScreen(boolean createMode, String name, Base editing) {
+		super(editing != null ? Text.translatable("baseinsurance.map.edit_title", editing.name)
+				: Text.translatable(createMode ? "baseinsurance.map.create_title" : "baseinsurance.map.title"));
 		this.createMode = createMode;
 		this.initialName = name;
+		this.editing = editing;
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (client.player != null) {
 			BlockPos p = client.player.getBlockPos();
@@ -89,10 +95,30 @@ public class MapScreen extends Screen {
 			selMaxZ = p.getZ() + 48;
 			if (createMode) zoom = Math.max(zoom, 1.5);
 		}
+		if (editing != null) {
+			selMinX = editing.minX;
+			selMaxX = editing.maxX;
+			selMinZ = editing.minZ;
+			selMaxZ = editing.maxZ;
+			editMinY = editing.minY;
+			editMaxY = editing.maxY;
+			centerX = (editing.minX + editing.maxX + 1) / 2.0;
+			centerZ = (editing.minZ + editing.maxZ + 1) / 2.0;
+			following = false;
+			fitZoom = true;
+		}
 	}
 
+	/** Zoom to fit the base being resized on the first frame (the screen size isn't known before). */
+	private boolean fitZoom;
+
 	public static MapScreen forCreate(String name) {
-		return new MapScreen(true, name);
+		return new MapScreen(true, name, null);
+	}
+
+	/** Resizing an existing base: its area to drag about, and its bottom and top. */
+	public static MapScreen forEdit(Base base) {
+		return new MapScreen(true, base.name, base);
 	}
 
 	// ---- Coordinates ----
@@ -142,6 +168,22 @@ public class MapScreen extends Screen {
 
 		int x = width - PANEL_WIDTH - 2;
 		int w = PANEL_WIDTH - 6;
+		if (editing != null) {
+			if (fitZoom) {
+				fitZoom = false;
+				int across = editing.maxX - editing.minX + 1, deep = editing.maxZ - editing.minZ + 1;
+				zoom = MathHelper.clamp(Math.min((mapRight() - 80) / (double) across, (height - 80) / (double) deep), MIN_ZOOM, MAX_ZOOM);
+			}
+			int bottom = client.world.getBottomY(), top = client.world.getTopYInclusive();
+			addDrawableChild(slider(x, 88, w, "bottom", bottom, top, () -> editMinY, v -> editMinY = Math.min(v, editMaxY)));
+			addDrawableChild(slider(x, 112, w, "top", bottom, top, () -> editMaxY, v -> editMaxY = Math.max(v, editMinY)));
+			confirmButton = addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.save_size"), b -> confirm())
+					.dimensions(x, height - 50, w, 20).build());
+			addDrawableChild(ButtonWidget.builder(ScreenTexts.CANCEL, b -> close())
+					.dimensions(x, height - 26, w, 20).build());
+			updateConfirm();
+			return;
+		}
 		nameField = new TextFieldWidget(textRenderer, x + 1, 42, w - 2, 16, Text.translatable("baseinsurance.map.name"));
 		nameField.setMaxLength(32);
 		nameField.setText(nameField.getText().isEmpty() && initialName != null ? initialName : nameField.getText());
@@ -181,10 +223,12 @@ public class MapScreen extends Screen {
 	}
 
 	private int minY() {
+		if (editing != null) return editMinY;
 		return Math.max(client.world.getBottomY(), baseY - down);
 	}
 
 	private int maxY() {
+		if (editing != null) return editMaxY;
 		return Math.min(client.world.getTopYInclusive(), baseY + up);
 	}
 
@@ -194,7 +238,7 @@ public class MapScreen extends Screen {
 
 	private void updateConfirm() {
 		if (confirmButton == null) return;
-		error = Commands.validate(nameField.getText(), volume());
+		error = editing != null ? Commands.validateSize(volume()) : Commands.validate(nameField.getText(), volume());
 		confirmButton.active = error == null;
 	}
 
@@ -202,6 +246,11 @@ public class MapScreen extends Screen {
 	public void confirm() {
 		updateConfirm();
 		if (error != null) return;
+		if (editing != null) {
+			Commands.resizeBase(editing, selMinX, selMaxX, selMinZ, selMaxZ, minY(), maxY(), Alerts::chat);
+			client.setScreen(new ReportScreen(editing));
+			return;
+		}
 		String result = Commands.createBase(nameField.getText(), client.world, client.player.getBlockPos(),
 				selMinX, selMaxX, selMinZ, selMaxZ, minY(), maxY(), Alerts::chat);
 		if (result != null) {
@@ -349,7 +398,9 @@ public class MapScreen extends Screen {
 		context.enableScissor(0, 0, right, height);
 		MapRender.drawTerrain(context, mapCenterX(), mapCenterY(), centerX, centerZ, zoom, right / 2.0, height / 2.0);
 		drawGrid(context, right);
-		for (Base base : bases()) drawBase(context, base);
+		for (Base base : bases()) {
+			if (base != editing) drawBase(context, base);
+		}
 		if (createMode) drawSelection(context);
 		drawTrustCircle(context);
 		drawMarkers(context);
@@ -551,6 +602,7 @@ public class MapScreen extends Screen {
 
 		// Help along the bottom, above the buttons, cut to fit.
 		String help = Text.translatable(createMode ? "baseinsurance.map.help_create" : "baseinsurance.map.help").getString();
+		if (font.getWidth(help) > right - 16) help = Text.translatable(createMode ? "baseinsurance.map.help_create_short" : "baseinsurance.map.help_short").getString();
 		help = font.trimToWidth(help, right - 16);
 		int y = createMode ? height - 14 : height - 40;
 		context.fill(4, y - 2, 12 + font.getWidth(help), y + 10, PANEL);
@@ -563,8 +615,14 @@ public class MapScreen extends Screen {
 		context.fill(x0, 0, x1, height, PANEL);
 		context.fill(x0, 0, x0 + 1, height, BORDER);
 		int x = x0 + 4;
-		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.create_title"), x, 8, GOLD);
-		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.name"), x, 31, GRAY);
+		context.drawTextWithShadow(font, title, x, 8, GOLD);
+		if (editing != null) {
+			int wasAcross = editing.maxX - editing.minX + 1, wasDeep = editing.maxZ - editing.minZ + 1;
+			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.was", wasAcross, wasDeep, editing.minY, editing.maxY), x, 31, GRAY);
+			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.edit_hint"), x, 42, GRAY);
+		} else {
+			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.name"), x, 31, GRAY);
+		}
 
 		int across = selMaxX - selMinX + 1, depth = selMaxZ - selMinZ + 1, tall = maxY() - minY() + 1;
 		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.area", across, depth), x, 64, WHITE);
@@ -574,16 +632,26 @@ public class MapScreen extends Screen {
 		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.volume", compact(volume)), x, 138,
 				volume > 16_000_000 ? 0xFFFF5050 : WHITE);
 		int loaded = loadedPercent();
-		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.loaded", loaded), x, 149,
-				loaded == 100 ? 0xFF50FF70 : GOLD);
+		if (editing == null) {
+			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.loaded", loaded), x, 149,
+					loaded == 100 ? 0xFF50FF70 : GOLD);
+		}
 
 		// Below that: the error if there is one, otherwise what "loaded" means, in whatever room is left.
-		boolean showError = error != null && nameField != null && !nameField.getText().isEmpty();
-		Text note = showError ? Text.literal(error)
+		boolean showError = error != null && (editing != null || nameField != null && !nameField.getText().isEmpty());
+		Text note = showError ? Text.literal(error) : editing != null ? Text.translatable("baseinsurance.map.edit_note")
 				: Text.translatable(loaded == 100 ? "baseinsurance.map.loaded_all" : "baseinsurance.map.loaded_some");
-		int textY = 162;
-		for (var line : font.wrapLines(note, PANEL_WIDTH - 10)) {
-			if (textY + 9 > height - 52) break;
+		int textY = editing == null ? 162 : 151;
+		// Whole sentences only: as many as fit, never one cut off halfway.
+		int room = Math.max(0, (height - 52 - textY + 1) / 10);
+		String text = note.getString();
+		var lines = font.wrapLines(Text.literal(text), PANEL_WIDTH - 10);
+		while (lines.size() > room && text.lastIndexOf(". ") > 0) {
+			text = text.substring(0, text.lastIndexOf(". ") + 1);
+			lines = font.wrapLines(Text.literal(text), PANEL_WIDTH - 10);
+		}
+		if (lines.size() > room) lines = lines.subList(0, room);
+		for (var line : lines) {
 			context.drawTextWithShadow(font, line, x, textY, showError ? 0xFFFF5050 : GRAY);
 			textY += 10;
 		}
@@ -658,6 +726,23 @@ public class MapScreen extends Screen {
 		if (n >= 1_000_000) return String.format(Locale.ROOT, "%.1fM", n / 1_000_000.0);
 		if (n >= 1_000) return String.format(Locale.ROOT, "%.0fk", n / 1_000.0);
 		return Long.toString(n);
+	}
+
+	@Override
+	public boolean keyPressed(net.minecraft.client.input.KeyInput key) {
+		// The map key moves on to the radar (or minimap), unless you're typing a name.
+		boolean typing = nameField != null && nameField.isFocused();
+		if (!createMode && !typing && BaseInsuranceClient.INSTANCE.isMapKey(key)) {
+			ViewCycle.pressedOnMap(client);
+			return true;
+		}
+		return super.keyPressed(key);
+	}
+
+	@Override
+	public void removed() {
+		ViewCycle.mapClosed();
+		super.removed();
 	}
 
 	@Override

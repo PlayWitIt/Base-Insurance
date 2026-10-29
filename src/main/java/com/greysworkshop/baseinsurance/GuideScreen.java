@@ -22,16 +22,18 @@ public class GuideScreen extends Screen {
 
 	private static final List<Step> STEPS = List.of(
 			new Step(new ItemStack(Items.FILLED_MAP), "1. Insure your base",
-					"Click \"Insure a base\" below (or type /bi create) and drag the area on the map to cover your base."),
+					"Click \"Insure a base\" below (or type /bi create) and drag the area on the map to cover your base. "
+							+ "Resize it any time from its report."),
 			new Step(new ItemStack(Items.COMPASS), "2. Walk around it once",
-					"Servers fake blocks far away, so only blocks you've been close to are trusted. The top-left corner shows "
-							+ "how much has been seen and points to the parts that haven't."),
+					"Everything within 48 blocks of you is checked, out of sight too. The top-left corner shows how much of "
+							+ "the base has been checked and points to the parts still to do."),
 			new Step(new ItemStack(Items.CHEST), "3. Open your chests",
 					"Open each chest, barrel and shulker box once so its contents are on record. Then anything taken is reported."),
 			new Step(new ItemStack(Items.BELL), "4. Get told what changed",
 					"Alerts tell you what changed while you were away or while you're there, and who was nearby. "
-							+ "/bi report shows it all: Find walks you to it, Accept makes it the new normal, Not damage ignores a "
-							+ "block type. Everything can be undone.")
+							+ "Only real changes: what servers fake (hidden ores, hidden chests) never counts. The report shows it "
+							+ "all: Show me marks it through walls, It's fine stops reporting it, Never count ignores that kind of "
+							+ "block. Everything can be undone. M cycles the map, radar and minimap.")
 	);
 
 	private final Screen parent;
@@ -78,7 +80,7 @@ public class GuideScreen extends Screen {
 			}
 			y += 6;
 		}
-		String keys = "Keys: M opens the map; - and = zoom the minimap. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
+		String keys = "Keys: M goes map, trail radar (with Naughty or Nice), minimap, off; - and = zoom the minimap. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
 				+ "Everything stays on your computer; /bi commands are never sent to the server.";
 		for (OrderedText line : textRenderer.wrapLines(Text.literal(keys), panelWidth)) {
 			context.drawTextWithShadow(textRenderer, line, left, y, CYAN);

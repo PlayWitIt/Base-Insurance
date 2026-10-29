@@ -23,6 +23,12 @@ public final class Base {
 	public long created;
 	/** Last time any part of the base was loaded and scanned. */
 	public long lastSeen;
+	/** The detection rules the changes were found with; older ones are re-checked (see {@link #RULES}). */
+	public int rules;
+	/** 2: only what can't be a server's fake counts (1.16.0). */
+	public static final int RULES = 2;
+	/** Re-checking everything after a rules upgrade: what's found is recorded without alerts. */
+	public transient boolean rechecking;
 
 	/** Blocks that differ from the snapshot, by {@link BlockPos#asLong()}. */
 	public Map<Long, Change> changes = new HashMap<>();
@@ -249,6 +255,8 @@ public final class Base {
 		/** Item id to total count. */
 		public Map<String, Integer> items = new LinkedHashMap<>();
 		public long updated;
+		/** The container's slots when recorded (27 or 54); 0 if not known (older records, or from Hoard Eye). */
+		public int size;
 	}
 
 	public boolean contains(BlockPos pos) {
@@ -265,6 +273,32 @@ public final class Base {
 		double dy = Math.max(0, Math.max(minY - y, y - (maxY + 1)));
 		double dz = Math.max(0, Math.max(minZ - z, z - (maxZ + 1)));
 		return Math.sqrt(dx * dx + dy * dy + dz * dz);
+	}
+
+	/** "40×12×40". */
+	public String sizeText() {
+		return (maxX - minX + 1) + "×" + (maxY - minY + 1) + "×" + (maxZ - minZ + 1);
+	}
+
+	/**
+	 * After the bounds changed: forgets everything now outside them (changes, records, snapshot sections), and
+	 * starts the scan afresh. New ground isn't in the snapshot yet, so it's taken as you get near, like a new base.
+	 */
+	public void reshaped() {
+		changes.keySet().removeIf(k -> !contains(BlockPos.fromLong(k)));
+		containers.keySet().removeIf(k -> !contains(BlockPos.fromLong(k)));
+		entities.values().removeIf(e -> !contains(e.pos()));
+		entityChanges.values().removeIf(e -> !contains(e.was.pos()));
+		sectionList = null;
+		java.util.Set<Long> inside = new HashSet<>(sections());
+		baseline.sections.keySet().removeIf(k -> !inside.contains(k));
+		scanCursor = 0;
+		loadedSections.clear();
+		arriving = false;
+		followUp.clear();
+		progressAt = 0;
+		dirty = true;
+		baselineDirty = true;
 	}
 
 	public long volume() {

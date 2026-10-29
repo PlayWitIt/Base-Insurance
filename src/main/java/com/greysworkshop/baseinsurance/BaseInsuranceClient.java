@@ -83,6 +83,9 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			if (!world.isClient() || !BIConfig.INSTANCE.enabled) return ActionResult.PASS;
 			ClientWorld clientWorld = (ClientWorld) world;
 			watcher.onUseBlock(clientWorld, hit.getBlockPos());
+			// Opening a chest (or the like) changes no blocks; holding Shift with something in hand places it instead.
+			if (ContainerWatcher.isStorage(clientWorld.getBlockEntity(hit.getBlockPos()))
+					&& !(player.isSneaking() && !player.getStackInHand(hand).isEmpty())) return ActionResult.PASS;
 			// Right-clicks can place, strip, fill or light blocks: the clicked block and the one in front are yours.
 			markAround(hit.getBlockPos());
 			markAround(hit.getBlockPos().offset(hit.getSide()));
@@ -99,8 +102,32 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			return ActionResult.PASS;
 		});
 
-		// Breaking a block can knock off what was attached to it (torches, doors), so neighbours count as yours too.
-		ClientPlayerBlockBreakEvents.AFTER.register((world, player, pos, state) -> markAround(pos));
+		// Buckets (water, lava, powder snow, fish) work on the block you aim at, and the fluid there, not through UseBlock.
+		net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+			if (!world.isClient() || !BIConfig.INSTANCE.enabled) return ActionResult.PASS;
+			if (player.getStackInHand(hand).getItem() instanceof net.minecraft.item.BucketItem
+					|| player.getStackInHand(hand).getItem() instanceof net.minecraft.item.PowderSnowBucketItem) {
+				for (boolean fluids : new boolean[] {false, true}) {
+					if (player.raycast(player.getBlockInteractionRange(), 0, fluids) instanceof net.minecraft.util.hit.BlockHitResult hit
+							&& hit.getType() == net.minecraft.util.hit.HitResult.Type.BLOCK) {
+						markAround(hit.getBlockPos());
+						markAround(hit.getBlockPos().offset(hit.getSide()));
+					}
+				}
+			}
+			return ActionResult.PASS;
+		});
+
+		// Breaking a block can knock off what was attached to it (torches, doors), so neighbours count as yours too;
+		// and sand or gravel above it falls.
+		ClientPlayerBlockBreakEvents.AFTER.register((world, player, pos, state) -> {
+			markAround(pos);
+			BlockPos above = pos.up();
+			for (int i = 0; i < 64 && world.getBlockState(above).getBlock() instanceof net.minecraft.block.FallingBlock; i++) {
+				markAround(above);
+				above = above.up();
+			}
+		});
 
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> watcher.onScreenOpened(screen));
 
@@ -140,6 +167,15 @@ public class BaseInsuranceClient implements ClientModInitializer {
 				LOGGER.error("Map test not available", e);
 			}
 		}
+	}
+
+	/** What the map key is bound to now ("M"). */
+	public String mapKeyName() {
+		return mapKey.isUnbound() ? "map key" : mapKey.getBoundKeyLocalizedText().getString();
+	}
+
+	public boolean isMapKey(net.minecraft.client.input.KeyInput key) {
+		return mapKey.matchesKey(key);
 	}
 
 	public static void toggleMinimap(MinecraftClient client) {
@@ -212,7 +248,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			if (client.player != null) client.player.sendMessage(Text.literal("Damage overlay " + (Overlay.enabled ? "ON" : "OFF")), true);
 		}
 		while (mapKey.wasPressed()) {
-			if (client.world != null) client.setScreen(new MapScreen());
+			if (client.world != null) ViewCycle.pressed(client);
 		}
 		while (minimapKey.wasPressed()) toggleMinimap(client);
 		while (zoomInKey.wasPressed()) zoomMinimap(client, 1);
