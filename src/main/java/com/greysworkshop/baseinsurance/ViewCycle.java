@@ -4,11 +4,11 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
 /**
- * The map key cycles what's on screen: the full map, then Naughty or Nice's trail radar (if it's installed), then
- * the minimap, then nothing, then the map again. Closing the map with Esc ends the cycle, so the key opens the map next.
+ * The map key cycles what's on screen: the full map, then the minimap, then Naughty or Nice's trail radar (if it's
+ * installed), then nothing, then the map again. Closing the map with Esc ends the cycle, so the key opens the map next.
  */
 public final class ViewCycle {
-	private enum Step { REST, MAP, RADAR, MINIMAP, OFF }
+	private enum Step { REST, MAP, MINIMAP, RADAR, OFF }
 
 	private static Step step = Step.REST;
 
@@ -17,8 +17,8 @@ public final class ViewCycle {
 	/** The map key, pressed with no screen open. */
 	public static void pressed(MinecraftClient client) {
 		switch (step) {
-			case RADAR -> show(client, Step.MINIMAP);
-			case MINIMAP -> show(client, Step.OFF);
+			case MINIMAP -> show(client, Radar.present() ? Step.RADAR : Step.OFF);
+			case RADAR -> show(client, Step.OFF);
 			default -> {
 				step = Step.MAP;
 				client.setScreen(new MapScreen());
@@ -26,10 +26,10 @@ public final class ViewCycle {
 		}
 	}
 
-	/** The map key, pressed on the map: on to the radar (or the minimap without one). */
+	/** The map key, pressed on the map: on to the minimap. */
 	public static void pressedOnMap(MinecraftClient client) {
 		client.setScreen(null);
-		show(client, Radar.present() ? Step.RADAR : Step.MINIMAP);
+		show(client, Step.MINIMAP);
 	}
 
 	/** The map was closed some other way (Esc, Done): the cycle starts over. */
@@ -45,8 +45,8 @@ public final class ViewCycle {
 		BIConfig.save();
 		String key = BaseInsuranceClient.INSTANCE.mapKeyName();
 		String text = switch (next) {
-			case RADAR -> "Trail radar · " + key + ": minimap next";
-			case MINIMAP -> "Minimap · " + key + ": hide both next";
+			case MINIMAP -> "Minimap · " + key + (Radar.present() ? ": trail radar next" : ": hide it next");
+			case RADAR -> "Trail radar · " + key + ": hide both next";
 			case OFF -> "Map and radar hidden · " + key + ": map next";
 			default -> "";
 		};

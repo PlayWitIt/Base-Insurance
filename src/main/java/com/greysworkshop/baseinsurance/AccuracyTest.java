@@ -342,7 +342,7 @@ if (wait > 0) {
 				boolean inside = base.changes.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k)));
 				SelfTest.check("resize: shrinking drops what's left outside (" + base.changes.size() + " changes, all inside: " + inside + ")",
 						inside && base.containers.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k))));
-				SelfTest.log("M key: map, radar (with Naughty or Nice: " + ViewCycle.Radar.present() + "), minimap, off");
+				SelfTest.log("M key: map, minimap, radar (with Naughty or Nice: " + ViewCycle.Radar.present() + "), off");
 				ViewCycle.pressed(client);
 				next(10);
 			}
@@ -352,17 +352,18 @@ if (wait > 0) {
 				next(20);
 			}
 			case 32 -> {
-				boolean radar = ViewCycle.Radar.present();
-				SelfTest.check("M again closes it and shows " + (radar ? "the trail radar, minimap hidden" : "the minimap (no radar installed)"),
-						client.currentScreen == null && (radar ? radarOn() && !BIConfig.INSTANCE.minimap : BIConfig.INSTANCE.minimap));
-				if (radar) SelfTest.screenshot(client, "23_m_radar");
-				if (radar) ViewCycle.pressed(client);
+				SelfTest.check("M again closes it and shows the minimap, radar hidden",
+						client.currentScreen == null && BIConfig.INSTANCE.minimap && !radarOn());
+				SelfTest.screenshot(client, "23_m_minimap");
+				ViewCycle.pressed(client);
 				next(20);
 			}
 			case 33 -> {
-				SelfTest.check("…then the minimap, radar hidden", BIConfig.INSTANCE.minimap && !radarOn());
-				SelfTest.screenshot(client, "24_m_minimap");
-				ViewCycle.pressed(client);
+				boolean radar = ViewCycle.Radar.present();
+				SelfTest.check("…then " + (radar ? "the trail radar, minimap hidden" : "nothing (no radar installed)"),
+						client.currentScreen == null && !BIConfig.INSTANCE.minimap && radar == radarOn());
+				if (radar) SelfTest.screenshot(client, "24_m_radar");
+				if (radar) ViewCycle.pressed(client);
 				next(10);
 			}
 			case 34 -> {

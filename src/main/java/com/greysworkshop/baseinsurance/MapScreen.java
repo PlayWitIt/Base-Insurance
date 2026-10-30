@@ -730,7 +730,7 @@ public class MapScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(net.minecraft.client.input.KeyInput key) {
-		// The map key moves on to the radar (or minimap), unless you're typing a name.
+		// The map key moves on to the minimap, unless you're typing a name.
 		boolean typing = nameField != null && nameField.isFocused();
 		if (!createMode && !typing && BaseInsuranceClient.INSTANCE.isMapKey(key)) {
 			ViewCycle.pressedOnMap(client);
