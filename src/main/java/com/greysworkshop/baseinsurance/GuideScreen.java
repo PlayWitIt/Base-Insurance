@@ -33,7 +33,7 @@ public class GuideScreen extends Screen {
 					"Alerts tell you what changed while you were away or while you're there, and who was nearby. "
 							+ "Only real changes: what servers fake (hidden ores, hidden chests) never counts. The report shows it "
 							+ "all: Show me marks it through walls, It's fine stops reporting it, Never count ignores that kind of "
-							+ "block. Everything can be undone. M cycles the map, minimap and radar.")
+							+ "block. Everything can be undone. M opens the map; its Minimap button shows or hides the minimap.")
 	);
 
 	private final Screen parent;
@@ -80,7 +80,7 @@ public class GuideScreen extends Screen {
 			}
 			y += 6;
 		}
-		String keys = "Keys: M goes map, minimap, trail radar (with Naughty or Nice), off; - and = zoom the minimap. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
+		String keys = "Keys: M opens and closes the map (its Minimap button shows or hides the minimap); - and = zoom the minimap. Set keys for the report, overlay and build mode in Options → Controls → Base Insurance. "
 				+ "Everything stays on your computer; /bi commands are never sent to the server.";
 		for (OrderedText line : textRenderer.wrapLines(Text.literal(keys), panelWidth)) {
 			context.drawTextWithShadow(textRenderer, line, left, y, CYAN);

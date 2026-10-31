@@ -27,6 +27,7 @@
 	"baseinsurance.map.create_title": "New base",
 	"baseinsurance.map.center": "Center on me",
 	"baseinsurance.map.new_base": "New base...",
+	"baseinsurance.map.minimap": "Minimap: %s",
 	"baseinsurance.map.name": "Name",
 	"baseinsurance.map.down": "Down from you: %s",
 	"baseinsurance.map.up": "Up from you: %s",

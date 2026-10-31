@@ -60,6 +60,8 @@ public class MapScreen extends Screen {
 	private int up = 48;
 	private TextFieldWidget nameField;
 	private ButtonWidget confirmButton;
+	/** The map's "Minimap: on/off" button (none while creating or resizing a base). */
+	ButtonWidget minimapButton;
 	private String error;
 
 	private Drag drag = Drag.NONE;
@@ -153,6 +155,10 @@ public class MapScreen extends Screen {
 
 	// ---- Widgets ----
 
+	private static Text minimapLabel() {
+		return Text.translatable("baseinsurance.map.minimap", Text.translatable(BIConfig.INSTANCE.minimap ? "options.on" : "options.off"));
+	}
+
 	@Override
 	protected void init() {
 		if (!createMode) {
@@ -161,6 +167,11 @@ public class MapScreen extends Screen {
 			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.new_base"),
 					b -> client.setScreen(forCreate(Commands.defaultName())))
 					.dimensions(110, height - 26, 100, 20).build());
+			minimapButton = addDrawableChild(ButtonWidget.builder(minimapLabel(), b -> {
+				BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
+				BIConfig.save();
+				b.setMessage(minimapLabel());
+			}).dimensions(214, height - 26, 100, 20).build());
 			addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, b -> close())
 					.dimensions(width - 106, height - 26, 100, 20).build());
 			return;
@@ -730,19 +741,13 @@ public class MapScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(net.minecraft.client.input.KeyInput key) {
-		// The map key moves on to the minimap, unless you're typing a name.
+		// The map key closes the map again, unless you're typing a name.
 		boolean typing = nameField != null && nameField.isFocused();
 		if (!createMode && !typing && BaseInsuranceClient.INSTANCE.isMapKey(key)) {
-			ViewCycle.pressedOnMap(client);
+			close();
 			return true;
 		}
 		return super.keyPressed(key);
-	}
-
-	@Override
-	public void removed() {
-		ViewCycle.mapClosed();
-		super.removed();
 	}
 
 	@Override

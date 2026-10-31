@@ -21,6 +21,8 @@ public final class Minimap {
 
 	/** Where the minimap (and its coordinates line) ended last frame, so the status text can go below it. */
 	private static int bottom = -1;
+	/** Its left edge, border included, last frame. */
+	private static int left = -1;
 	private static BIConfig.Corner corner = BIConfig.Corner.TOP_RIGHT;
 
 	private Minimap() {}
@@ -28,6 +30,11 @@ public final class Minimap {
 	/** The y just below the minimap in {@code side}, or -1 if it isn't there. */
 	public static int bottomIn(BIConfig.Corner side) {
 		return side == corner ? bottom : -1;
+	}
+
+	/** The x of the minimap's left edge in {@code side}, or -1 if it isn't there. */
+	public static int leftIn(BIConfig.Corner side) {
+		return side == corner && bottom >= 0 ? left : -1;
 	}
 
 	public static void render(DrawContext context, RenderTickCounter tickCounter) {
@@ -53,6 +60,7 @@ public final class Minimap {
 		// Rotating: turn the world so the way you face is up.
 		float turn = rotate ? (float) Math.toRadians(-(yaw + 180)) : 0;
 
+		left = x0 - 2;
 		context.fill(x0 - 2, y0 - 2, x1 + 2, y1 + 2, BORDER);
 		context.fill(x0 - 1, y0 - 1, x1 + 1, y1 + 1, 0xFF000000);
 		context.fill(x0, y0, x1, y1, BACKGROUND);

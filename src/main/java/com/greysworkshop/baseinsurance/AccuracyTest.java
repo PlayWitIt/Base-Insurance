@@ -6,6 +6,8 @@ import net.minecraft.block.ChestBlock;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.input.KeyInput;
+import net.minecraft.client.option.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.ItemFrameEntity;
 import net.minecraft.item.ItemStack;
@@ -17,6 +19,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 
+import org.lwjgl.glfw.GLFW;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -58,6 +61,9 @@ final class AccuracyTest {
 	}
 
 	private static boolean finished;
+	/** Naughty or Nice's radar setting before the map key test: the map must leave it as it was. */
+	private static boolean radarBefore;
+	private static int sizeBefore;
 
 	/** Done, and the game is closing: nothing else should run. */
 	static boolean finished() {
@@ -342,37 +348,76 @@ if (wait > 0) {
 				boolean inside = base.changes.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k)));
 				SelfTest.check("resize: shrinking drops what's left outside (" + base.changes.size() + " changes, all inside: " + inside + ")",
 						inside && base.containers.keySet().stream().allMatch(k -> base.contains(BlockPos.fromLong(k))));
-				SelfTest.log("M key: map, minimap, radar (with Naughty or Nice: " + ViewCycle.Radar.present() + "), off");
-				ViewCycle.pressed(client);
+				SelfTest.log("M key: the map; its Minimap button; M again closes it; the radar is left alone");
+				radarBefore = radarOn();
+				BIConfig.INSTANCE.minimap = true;
+				BaseInsuranceClient.openMap(client);
 				next(10);
 			}
 			case 31 -> {
 				SelfTest.check("M opens the map", client.currentScreen instanceof MapScreen);
-				ViewCycle.pressedOnMap(client);
-				next(20);
+				if (client.currentScreen instanceof MapScreen map && map.minimapButton != null) {
+					SelfTest.check("the map has a Minimap button that says on (" + map.minimapButton.getMessage().getString() + ")",
+							map.minimapButton.getMessage().getString().equals("Minimap: ON"));
+					map.minimapButton.onPress(new KeyInput(GLFW.GLFW_KEY_ENTER, 0, 0));
+					SelfTest.check("pressing it hides the minimap and says off (" + map.minimapButton.getMessage().getString() + ")",
+							!BIConfig.INSTANCE.minimap && map.minimapButton.getMessage().getString().equals("Minimap: OFF"));
+					SelfTest.screenshot(client, "23_map_minimap_button");
+				} else {
+					SelfTest.check("the map has a Minimap button", false);
+				}
+				next(10);
 			}
 			case 32 -> {
-				SelfTest.check("M again closes it and shows the minimap, radar hidden",
-						client.currentScreen == null && BIConfig.INSTANCE.minimap && !radarOn());
-				SelfTest.screenshot(client, "23_m_minimap");
-				ViewCycle.pressed(client);
-				next(20);
+				if (client.currentScreen != null) client.currentScreen.keyPressed(new KeyInput(GLFW.GLFW_KEY_M, 0, 0));
+				SelfTest.check("M on the map closes it, and the minimap stays hidden", client.currentScreen == null && !BIConfig.INSTANCE.minimap);
+				SelfTest.check("the trail radar isn't touched (" + radarBefore + " → " + radarOn() + ")", radarOn() == radarBefore);
+				BaseInsuranceClient.openMap(client);
+				next(10);
 			}
 			case 33 -> {
-				boolean radar = ViewCycle.Radar.present();
-				SelfTest.check("…then " + (radar ? "the trail radar, minimap hidden" : "nothing (no radar installed)"),
-						client.currentScreen == null && !BIConfig.INSTANCE.minimap && radar == radarOn());
-				if (radar) SelfTest.screenshot(client, "24_m_radar");
-				if (radar) ViewCycle.pressed(client);
-				next(10);
+				if (client.currentScreen instanceof MapScreen map && map.minimapButton != null) map.minimapButton.onPress(new KeyInput(GLFW.GLFW_KEY_ENTER, 0, 0));
+				SelfTest.check("pressing it again brings the minimap back", BIConfig.INSTANCE.minimap);
+				if (client.currentScreen != null) client.currentScreen.keyPressed(new KeyInput(GLFW.GLFW_KEY_ESCAPE, 0, 0));
+				next(20);
 			}
 			case 34 -> {
-				SelfTest.check("…then nothing", !BIConfig.INSTANCE.minimap && !radarOn() && client.currentScreen == null);
-				ViewCycle.pressed(client);
-				next(10);
+				SelfTest.check("Esc closes the map and the minimap shows", client.currentScreen == null && BIConfig.INSTANCE.minimap && radarOn() == radarBefore);
+				SelfTest.screenshot(client, "24_minimap_back");
+				if (radarInstalled()) {
+					KeyBinding radarKey = KeyBinding.byId("key.naughtyornice.radar");
+					SelfTest.check("Naughty or Nice's radar has its own key, O (" + (radarKey == null ? "none" : radarKey.getBoundKeyTranslationKey()) + ")",
+							radarKey != null && radarKey.getBoundKeyTranslationKey().equals("key.keyboard.o"));
+					setRadar(true);
+				}
+				next(20);
 			}
 			case 35 -> {
-				SelfTest.check("…then the map again", client.currentScreen instanceof MapScreen);
+				if (radarInstalled()) {
+					int top = radar("lastTop"), right = radar("lastRight");
+					int bottom = Minimap.bottomIn(BIConfig.Corner.TOP_RIGHT), left = Minimap.leftIn(BIConfig.Corner.TOP_RIGHT);
+					SelfTest.check("with both on, the radar is below or beside the minimap, not over it (radar from y " + top + " to x " + right
+							+ ", minimap to y " + bottom + " from x " + left + ")", BIConfig.INSTANCE.minimap && bottom > 0 && (top >= bottom || right <= left));
+					SelfTest.screenshot(client, "25_minimap_and_radar");
+					sizeBefore = BIConfig.INSTANCE.minimapSize;
+					BIConfig.INSTANCE.minimapSize = 64;
+				}
+				next(20);
+			}
+			case 36 -> {
+				if (radarInstalled()) {
+					int top = radar("lastTop"), bottom = Minimap.bottomIn(BIConfig.Corner.TOP_RIGHT);
+					SelfTest.check("with a small minimap there's room, so the radar goes below it (radar from y " + top + ", minimap to y " + bottom + ")",
+							bottom > 0 && top >= bottom);
+					SelfTest.screenshot(client, "26_small_minimap_and_radar");
+					BIConfig.INSTANCE.minimapSize = sizeBefore;
+					setRadar(radarBefore);
+				}
+				BaseInsuranceClient.openMap(client);
+				next(10);
+			}
+			case 37 -> {
+				SelfTest.check("M opens the map again", client.currentScreen instanceof MapScreen);
 				client.setScreen(null);
 				BIConfig.INSTANCE.minimap = true;
 				SelfTest.log("RESULT " + SelfTest.passed + " passed, " + SelfTest.failed + " failed");
@@ -393,6 +438,29 @@ if (wait > 0) {
 			boolean shown = Vec3d.ofCenter(pos).distanceTo(eye) <= Sight.CONTAINER_RANGE && Sight.visible(client.world, client.player, eye, pos);
 			BlockState want = shown ? e.getValue() : Blocks.AIR.getDefaultState();
 			if (client.world.getBlockState(pos) != want) client.world.setBlockState(pos, want);
+		}
+	}
+
+	private static boolean radarInstalled() {
+		return net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("naughtyornice");
+	}
+
+	private static void setRadar(boolean on) {
+		try {
+			Object config = Class.forName("com.greysworkshop.naughtyornice.NNConfig").getField("INSTANCE").get(null);
+			config.getClass().getField("trailRadar").setBoolean(config, on);
+			if (on) config.getClass().getField("chunkTrails").setBoolean(config, true);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			SelfTest.check("switching Naughty or Nice's radar (" + e + ")", false);
+		}
+	}
+
+	/** Where Naughty or Nice's radar was drawn last frame ("lastTop", "lastRight"), or -1. */
+	private static int radar(String edge) {
+		try {
+			return Class.forName("com.greysworkshop.naughtyornice.TrailRadar").getField(edge).getInt(null);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			return -1;
 		}
 	}
 

@@ -178,6 +178,11 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		return mapKey.matchesKey(key);
 	}
 
+	/** The map key, pressed with no screen open: the full map. (On the map, the same key closes it.) */
+	public static void openMap(MinecraftClient client) {
+		if (client.world != null && client.currentScreen == null) client.setScreen(new MapScreen());
+	}
+
 	public static void toggleMinimap(MinecraftClient client) {
 		BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
 		BIConfig.save();
@@ -247,9 +252,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			Overlay.enabled = !Overlay.enabled;
 			if (client.player != null) client.player.sendMessage(Text.literal("Damage overlay " + (Overlay.enabled ? "ON" : "OFF")), true);
 		}
-		while (mapKey.wasPressed()) {
-			if (client.world != null) ViewCycle.pressed(client);
-		}
+		while (mapKey.wasPressed()) openMap(client);
 		while (minimapKey.wasPressed()) toggleMinimap(client);
 		while (zoomInKey.wasPressed()) zoomMinimap(client, 1);
 		while (zoomOutKey.wasPressed()) zoomMinimap(client, -1);

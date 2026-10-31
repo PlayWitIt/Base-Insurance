@@ -52,10 +52,10 @@ while real griefing (in view or behind a wall) still is.
 Everything you explore is drawn into a map as chunks load, in vanilla map colours with hill shading, and saved per
 server and dimension, so it keeps growing every time you play.
 - **Minimap** in the top-right corner while you play: your bases (green intact, red damaged), nearby players and your
-  coordinates. Zoom it with **-** and **=**, hide it with `/bi minimap`. It can turn with you, change corner and size
+  coordinates. Zoom it with **-** and **=**, hide it with the Minimap button on the full map (or `/bi minimap`). It can turn with you, change corner and size
   in Settings → Map, and moves down out of the way of potion effect icons.
-- **M** cycles what's on screen: the full map, then the minimap, then Naughty or Nice's trail radar (if you have it),
-  then nothing, then the map again. Esc on the map just closes it.
+- **M** opens the full map, and M or Esc closes it. The map's **Minimap** button shows or hides the minimap.
+  Naughty or Nice's trail radar has its own key (**O**).
 - **Full map**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
   zoom from 16 pixels per block out to 32 blocks per pixel. Click a base for its report.
 - Works on servers that send wrong surface heights with their chunks (common on older servers joined through
