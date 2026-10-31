@@ -58,6 +58,8 @@ server and dimension, so it keeps growing every time you play.
   Naughty or Nice's trail radar has its own key (**O**).
 - **Full map**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
   zoom from 16 pixels per block out to 32 blocks per pixel. Click a base for its report.
+  Right-click anywhere for **Walk here** (needs Baritone; with Naughty or Nice it goes as one of its trips, using
+  nether highways and flying when it can) or **Copy coordinates**.
 - Works on servers that send wrong surface heights with their chunks (common on older servers joined through
   ViaVersion): the map checks them and finds the ground itself. Chunks missed while joining are picked up a moment later.
 - **Player sightings:** with Naughty or Nice, diamonds where it last saw the players on your lists (hover for who,

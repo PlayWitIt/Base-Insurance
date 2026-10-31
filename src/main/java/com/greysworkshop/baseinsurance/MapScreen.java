@@ -14,6 +14,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix3x2fStack;
 
+import org.lwjgl.glfw.GLFW;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -62,6 +64,12 @@ public class MapScreen extends Screen {
 	private ButtonWidget confirmButton;
 	/** The map's "Minimap: on/off" button (none while creating or resizing a base). */
 	ButtonWidget minimapButton;
+	/** The right-click menu: where it's drawn, and the spot (block x, z) it's for; null when it's closed. */
+	int[] menu;
+	/** Its rows as last drawn: x0, y0, x1, y1 and which (0 walk, 1 copy). */
+	private final List<int[]> menuRows = new ArrayList<>();
+	/** Why the last Walk here didn't go, shown in the menu. */
+	private String menuNote;
 	private String error;
 
 	private Drag drag = Drag.NONE;
@@ -283,9 +291,25 @@ public class MapScreen extends Screen {
 	@Override
 	public boolean mouseClicked(Click click, boolean doubled) {
 		if (ModsPanel.streamSafe()) return true;
-		if (super.mouseClicked(click, doubled)) return true;
 		double mx = click.x(), my = click.y();
+		if (menu != null) {
+			// A click on a row does it; anywhere else just closes the menu.
+			for (int[] row : menuRows) {
+				if (mx >= row[0] && mx < row[2] && my >= row[1] && my < row[3]) {
+					menuPick(row[4]);
+					return true;
+				}
+			}
+			menu = null;
+			return true;
+		}
+		if (super.mouseClicked(click, doubled)) return true;
 		if (mx >= mapRight()) return false;
+		// Right-click: walk to the spot, or copy where it is.
+		if (click.button() == 1 && !createMode) {
+			openMenu(mx, my);
+			return true;
+		}
 		pressX = mx;
 		pressY = my;
 		moved = false;
@@ -304,6 +328,72 @@ public class MapScreen extends Screen {
 		drag = createMode ? handleAt(mx, my) : Drag.PAN;
 		dragStart = new int[]{selMinX, selMaxX, selMinZ, selMaxZ, (int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my))};
 		return true;
+	}
+
+	/** Opens the right-click menu for the spot under the mouse. */
+	void openMenu(double mx, double my) {
+		menu = new int[] {(int) mx, (int) my, (int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my))};
+		menuNote = null;
+		drag = Drag.NONE;
+	}
+
+	/** Self-test: right-clicks the map where block x, z is drawn. */
+	void testRightClickAt(int bx, int bz) {
+		mouseClicked(new Click(screenX(bx + 0.5), screenY(bz + 0.5), new net.minecraft.client.input.MouseInput(1, 0)), false);
+	}
+
+	/** A menu row: 0 walks there with Baritone, 1 copies the coordinates. */
+	void menuPick(int which) {
+		int x = menu[2], z = menu[3];
+		if (which == 1) {
+			client.keyboard.setClipboard(x + " " + z);
+			if (client.player != null) client.player.sendMessage(Text.literal("Copied " + x + " " + z), true);
+			menu = null;
+			return;
+		}
+		String said = Travel.go(client, x, z);
+		if (!said.startsWith("Going")) {
+			menuNote = said;
+			return;
+		}
+		// Back to the game to watch it go.
+		menu = null;
+		close();
+		if (client.player != null) client.player.sendMessage(Text.literal(said), true);
+	}
+
+	private void drawMenu(DrawContext context, int mouseX, int mouseY) {
+		menuRows.clear();
+		TextRenderer font = textRenderer;
+		boolean can = Travel.available();
+		String title = "X " + menu[2] + "  Z " + menu[3];
+		String walk = can ? "Walk here" : "Walk here (needs Baritone)";
+		String copy = "Copy coordinates";
+		String note = menuNote;
+		int w = Math.max(font.getWidth(title), Math.max(font.getWidth(walk), font.getWidth(copy))) + 20;
+		if (note != null) w = Math.max(w, Math.min(220, font.getWidth(note) + 12));
+		List<net.minecraft.text.OrderedText> noteLines = note == null ? List.of() : font.wrapLines(Text.literal(note), w - 12);
+		int rowH = 13;
+		int h = 16 + 2 * rowH + 4 + noteLines.size() * 10;
+		int x = Math.max(4, Math.min(menu[0], width - w - 4)), y = Math.max(4, Math.min(menu[1], height - h - 4));
+		context.fill(x, y, x + w, y + h, 0xF0181820);
+		context.drawStrokedRectangle(x, y, w, h, 0xFF6A6AB4);
+		context.drawTextWithShadow(font, title, x + 6, y + 5, GOLD);
+		int ry = y + 16;
+		String[] labels = {walk, copy};
+		for (int i = 0; i < 2; i++) {
+			boolean enabled = i == 1 || can;
+			boolean hover = enabled && mouseX >= x + 2 && mouseX < x + w - 2 && mouseY >= ry && mouseY < ry + rowH;
+			if (hover) context.fill(x + 2, ry, x + w - 2, ry + rowH, 0xC0303048);
+			context.drawTextWithShadow(font, labels[i], x + 8, ry + 3, !enabled ? 0xFF707080 : hover ? 0xFFFFFFFF : 0xFFD0D0E0);
+			if (enabled) menuRows.add(new int[] {x + 2, ry, x + w - 2, ry + rowH, i});
+			ry += rowH;
+		}
+		ry += 2;
+		for (var line : noteLines) {
+			context.drawTextWithShadow(font, line, x + 6, ry, 0xFFFF7070);
+			ry += 10;
+		}
 	}
 
 	/** Which part of the proposed area (if any) is under the mouse. */
@@ -429,6 +519,10 @@ public class MapScreen extends Screen {
 			context.fill(0, 0, width, height, 0xF0101418);
 			context.drawCenteredTextWithShadow(textRenderer, "Hidden while stream-safe mode is on", width / 2, height / 2 - 10, 0xFFFFFFFF);
 			context.drawCenteredTextWithShadow(textRenderer, "The map gives away where you are. Press Esc, then the stream-safe key to show it.", width / 2, height / 2 + 4, 0xFF9AA4AE);
+			return;
+		}
+		if (menu != null) {
+			drawMenu(context, mouseX, mouseY);
 			return;
 		}
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
@@ -741,6 +835,10 @@ public class MapScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(net.minecraft.client.input.KeyInput key) {
+		if (menu != null && key.key() == GLFW.GLFW_KEY_ESCAPE) {
+			menu = null;
+			return true;
+		}
 		// The map key closes the map again, unless you're typing a name.
 		boolean typing = nameField != null && nameField.isFocused();
 		if (!createMode && !typing && BaseInsuranceClient.INSTANCE.isMapKey(key)) {

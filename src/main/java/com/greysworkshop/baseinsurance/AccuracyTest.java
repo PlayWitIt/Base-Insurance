@@ -64,6 +64,8 @@ final class AccuracyTest {
 	/** Naughty or Nice's radar setting before the map key test: the map must leave it as it was. */
 	private static boolean radarBefore;
 	private static int sizeBefore;
+	/** Where the walk from the map started. */
+	private static int walkFromX, walkFromZ;
 
 	/** Done, and the game is closing: nothing else should run. */
 	static boolean finished() {
@@ -418,6 +420,32 @@ if (wait > 0) {
 			}
 			case 37 -> {
 				SelfTest.check("M opens the map again", client.currentScreen instanceof MapScreen);
+				if (client.currentScreen instanceof MapScreen map) {
+					walkFromX = client.player.getBlockX();
+					walkFromZ = client.player.getBlockZ();
+					map.testRightClickAt(walkFromX, walkFromZ + 20);
+					SelfTest.check("right-clicking the map opens its menu, for that spot (" + (map.menu == null ? "none" : map.menu[2] + ", " + map.menu[3]) + ")",
+							map.menu != null && map.menu[2] == walkFromX && map.menu[3] == walkFromZ + 20);
+				}
+				next(10);
+			}
+			case 38 -> {
+				SelfTest.screenshot(client, "27_map_menu");
+				if (client.currentScreen instanceof MapScreen map && map.menu != null) {
+					map.menuPick(1);
+					String copied = client.keyboard.getClipboard();
+					SelfTest.check("Copy coordinates copies them (" + copied + ")", copied.equals(walkFromX + " " + (walkFromZ + 20)) && map.menu == null);
+					map.testRightClickAt(walkFromX, walkFromZ + 20);
+					SelfTest.check("Baritone is there to walk with", Travel.available());
+					map.menuPick(0);
+				}
+				SelfTest.check("Walk here closes the map to watch it go", client.currentScreen == null);
+				if (radarInstalled()) SelfTest.check("with Naughty or Nice, it goes as one of its trips (trip bar, stop key)", nnTripActive());
+				next(20 * 25);
+			}
+			case 39 -> {
+				double off = Math.hypot(client.player.getX() - (walkFromX + 0.5), client.player.getZ() - (walkFromZ + 20.5));
+				SelfTest.check(String.format(java.util.Locale.ROOT, "…and walks there (%.1f blocks off, with Naughty or Nice: %s)", off, radarInstalled()), off < 3);
 				client.setScreen(null);
 				BIConfig.INSTANCE.minimap = true;
 				SelfTest.log("RESULT " + SelfTest.passed + " passed, " + SelfTest.failed + " failed");
@@ -452,6 +480,14 @@ if (wait > 0) {
 			if (on) config.getClass().getField("chunkTrails").setBoolean(config, true);
 		} catch (ReflectiveOperationException | LinkageError e) {
 			SelfTest.check("switching Naughty or Nice's radar (" + e + ")", false);
+		}
+	}
+
+	private static boolean nnTripActive() {
+		try {
+			return (boolean) Class.forName("com.greysworkshop.naughtyornice.SmartTravel").getMethod("active").invoke(null);
+		} catch (ReflectiveOperationException | LinkageError e) {
+			return false;
 		}
 	}
 
