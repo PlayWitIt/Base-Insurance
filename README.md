@@ -18,6 +18,9 @@ friends, and where it last saw players shows on the map.
 **Mods panel:** press **Right Shift** on the title screen, the server or world list, or the pause menu, or click
 **Mods panel** at the top left of the title screen. It shows the main switches of every PlayWit mod you have (Naughty or Nice,
 Base Insurance, Hoard Eye), so you can turn something off before you join a world, and opens each one's full settings.
+Its **Backups** page saves everything the mods keep, and can keep a copy off the computer: in a folder you pick (one
+that Google Drive, OneDrive or Dropbox syncs puts it in the cloud), or uploaded to **Google Drive** or **OneDrive**
+after you connect them. One goes every day you play; on a new computer, connect the same place and restore from it.
 
 ## How it works
 1. **Insure a base.** Run `/bi create` and draw the area on the map. Change it any time with **Resize** in its report
