@@ -113,8 +113,10 @@ public final class BIConfig {
 	// ---- Map ----
 	/** The explored map in a corner of the screen while you play. */
 	public boolean minimap = true;
-	/** Minimap width and height, in GUI pixels. */
-	public int minimapSize = 112;
+	/** Minimap width and height, in GUI pixels. Changed on the map (M) or in the settings. */
+	public int minimapSize = 80;
+	/** The old default size (112) has been moved to the smaller one, once. */
+	public boolean minimapSmaller;
 	/** Minimap screen pixels per block. */
 	public double minimapZoom = 1;
 	/** Turn the minimap so the way you face is always up (otherwise north is up). */
@@ -126,6 +128,8 @@ public final class BIConfig {
 	public int mapSpeed = 6;
 	public boolean mapDamageDots = true;
 	public boolean mapGrid = true;
+	/** How far the map (M) is zoomed, kept between games. */
+	public double mapZoom = 2;
 	/** Pins other mods put on the map, such as where Naughty or Nice last saw players. */
 	public boolean mapPins = true;
 
@@ -170,7 +174,13 @@ public final class BIConfig {
 	}
 
 	public static void load() {
-		if (!Files.exists(file())) return;
+		BIConfig loaded = read();
+		if (loaded != null) INSTANCE = loaded;
+	}
+
+	/** The settings as saved on disk (with the one-time changes applied), or null if there are none or they can't be read. */
+	static BIConfig read() {
+		if (!Files.exists(file())) return null;
 		try (Reader reader = Files.newBufferedReader(file())) {
 			BIConfig loaded = GSON.fromJson(reader, BIConfig.class);
 			if (loaded != null) {
@@ -184,16 +194,23 @@ public final class BIConfig {
 				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;
 				if (loaded.minimapCorner == null) loaded.minimapCorner = Corner.TOP_RIGHT;
 				if (!(loaded.minimapZoom >= Minimap.MIN_ZOOM && loaded.minimapZoom <= Minimap.MAX_ZOOM)) loaded.minimapZoom = 1;
+				if (!(loaded.mapZoom >= 1 / 32.0 && loaded.mapZoom <= 16)) loaded.mapZoom = 2;
+				if (!loaded.minimapSmaller) {
+					// 1.17.1: the minimap is smaller by default (112 → 80). A size you picked yourself is kept.
+					if (loaded.minimapSize == 112) loaded.minimapSize = 80;
+					loaded.minimapSmaller = true;
+				}
 				loaded.minimapSize = Math.max(64, Math.min(256, loaded.minimapSize));
 				if (!loaded.radiusRaised) {
 					// 1.16.0 judges blocks by what can't be faked, so it can safely look further: 32 (the old default) → 48.
 					if (loaded.trustRadius == 32) loaded.trustRadius = 48;
 					loaded.radiusRaised = true;
 				}
-				INSTANCE = loaded;
 			}
+			return loaded;
 		} catch (IOException | RuntimeException e) {
 			BaseInsuranceClient.LOGGER.error("Could not read {}", file(), e);
+			return null;
 		}
 	}
 

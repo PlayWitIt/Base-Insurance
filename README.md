@@ -57,7 +57,9 @@ server and dimension, so it keeps growing every time you play.
 - **Minimap** in the top-right corner while you play: your bases (green intact, red damaged), nearby players and your
   coordinates. Zoom it with **-** and **=**, hide it with the Minimap button on the full map (or `/bi minimap`). It can turn with you, change corner and size
   in Settings → Map, and moves down out of the way of potion effect icons.
-- **M** opens the full map, and M or Esc closes it. The map's **Minimap** button shows or hides the minimap.
+- **M** opens the full map, and M or Esc closes it. At the bottom of the map, **Minimap: ON/OFF** shows or hides the
+  minimap, and **Size** makes it bigger or smaller (an outline shows how big it will be). Both are saved at once and
+  kept in every game after, and so is how far you zoomed the map. The minimap is small by default (80).
   Naughty or Nice's trail radar has its own key (**O**).
 - **Full map**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
   zoom from 16 pixels per block out to 32 blocks per pixel. Click a base for its report.

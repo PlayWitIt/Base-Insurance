@@ -27,6 +27,13 @@ public final class Minimap {
 
 	private Minimap() {}
 
+	/** Where the minimap goes on a screen this big, at its current size: {x0, y0, size} (no potion-icon shift). */
+	public static int[] spot(int screenWidth) {
+		int size = BIConfig.INSTANCE.minimapSize;
+		boolean right = BIConfig.INSTANCE.minimapCorner == BIConfig.Corner.TOP_RIGHT;
+		return new int[] {right ? screenWidth - size - MARGIN : MARGIN, MARGIN, size};
+	}
+
 	/** The y just below the minimap in {@code side}, or -1 if it isn't there. */
 	public static int bottomIn(BIConfig.Corner side) {
 		return side == corner ? bottom : -1;
@@ -37,9 +44,17 @@ public final class Minimap {
 		return side == corner && bottom >= 0 ? left : -1;
 	}
 
+	/** Frames drawn so far (for the self-test, which must wait for one after a change). */
+	private static int frames;
+
+	static int frames() {
+		return frames;
+	}
+
 	public static void render(DrawContext context, RenderTickCounter tickCounter) {
 		MinecraftClient client = MinecraftClient.getInstance();
 		BIConfig config = BIConfig.INSTANCE;
+		frames++;
 		bottom = -1;
 		// Stream-safe mode (see ModsPanel): the map around you gives your location away to anyone watching.
 		if (!config.enabled || !config.minimap || ModsPanel.streamSafe() || client.world == null || client.player == null || client.options.hudHidden

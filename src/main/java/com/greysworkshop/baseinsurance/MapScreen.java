@@ -44,6 +44,7 @@ public class MapScreen extends Screen {
 	private static double centerX = Double.NaN;
 	private static double centerZ;
 	private static double zoom = 2;
+	private static boolean zoomLoaded;
 	private static String viewDimension;
 	/** Keep the view centred on you as you move, until you drag it somewhere else. */
 	private static boolean following = true;
@@ -88,6 +89,11 @@ public class MapScreen extends Screen {
 		this.createMode = createMode;
 		this.initialName = name;
 		this.editing = editing;
+		if (!zoomLoaded) {
+			// The zoom you left the map at last game.
+			zoom = MathHelper.clamp(BIConfig.INSTANCE.mapZoom, MIN_ZOOM, MAX_ZOOM);
+			zoomLoaded = true;
+		}
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (client.player != null) {
 			BlockPos p = client.player.getBlockPos();
@@ -170,18 +176,20 @@ public class MapScreen extends Screen {
 	@Override
 	protected void init() {
 		if (!createMode) {
+			// Center, New base, Minimap on/off, Minimap size ... Done: as wide as fits, up to 100 each.
+			int bw = Math.max(40, Math.min(100, (width - 12 - 4 * 4) / 5));
+			int by = height - 26;
 			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.center"), b -> centerOnPlayer())
-					.dimensions(6, height - 26, 100, 20).build());
+					.dimensions(6, by, bw, 20).build());
 			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.new_base"),
 					b -> client.setScreen(forCreate(Commands.defaultName())))
-					.dimensions(110, height - 26, 100, 20).build());
-			minimapButton = addDrawableChild(ButtonWidget.builder(minimapLabel(), b -> {
-				BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
-				BIConfig.save();
-				b.setMessage(minimapLabel());
-			}).dimensions(214, height - 26, 100, 20).build());
+					.dimensions(6 + (bw + 4), by, bw, 20).build());
+			minimapButton = addDrawableChild(ButtonWidget.builder(minimapLabel(), b -> toggleMinimap())
+					.dimensions(6 + 2 * (bw + 4), by, bw, 20).build());
+			sizeSlider = addDrawableChild(minimapSizeSlider(6 + 3 * (bw + 4), by, bw));
+			sizeSlider.active = BIConfig.INSTANCE.minimap;
 			addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, b -> close())
-					.dimensions(width - 106, height - 26, 100, 20).build());
+					.dimensions(width - 6 - bw, by, bw, 20).build());
 			return;
 		}
 
@@ -216,6 +224,78 @@ public class MapScreen extends Screen {
 				.dimensions(x, height - 26, w, 20).build());
 		setInitialFocus(nameField);
 		updateConfirm();
+	}
+
+	@Override
+	public void removed() {
+		super.removed();
+		// Keep the zoom for next game (not the zoom a base was fitted to while making or resizing one).
+		if (!createMode && editing == null && zoom != BIConfig.INSTANCE.mapZoom) {
+			BIConfig.INSTANCE.mapZoom = zoom;
+			BIConfig.save();
+		}
+	}
+
+	SliderWidget sizeSlider;
+	/** The size the minimap's outline was last drawn at (0: not drawn); for the self-test. */
+	int previewDrawnAt;
+	/** Until when the minimap's outline shows on the map (just after its size changes). */
+	private long sizePreviewUntil;
+
+	/** The minimap's size, saved as it changes; its outline shows where it'll be. */
+	private SliderWidget minimapSizeSlider(int x, int y, int w) {
+		int min = 64, max = 256;
+		return new SliderWidget(x, y, w, 20, Text.empty(), (BIConfig.INSTANCE.minimapSize - min) / (double) (max - min)) {
+			{
+				updateMessage();
+			}
+
+			private int current() {
+				// Steps of 4, so it's easy to land on a size.
+				return MathHelper.clamp(min + (int) Math.round(MathHelper.clamp(value, 0, 1) * (max - min) / 4.0) * 4, min, max);
+			}
+
+			@Override
+			protected void updateMessage() {
+				setMessage(Text.translatable("baseinsurance.map.minimap_size", current()));
+			}
+
+			@Override
+			protected void applyValue() {
+				setMinimapSize(current());
+			}
+		};
+	}
+
+	/** The Minimap on/off button: saved at once, so it stays that way in every game after. */
+	void toggleMinimap() {
+		BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
+		BIConfig.save();
+		if (minimapButton != null) minimapButton.setMessage(minimapLabel());
+		if (sizeSlider != null) sizeSlider.active = BIConfig.INSTANCE.minimap;
+	}
+
+	/** The size slider: saved at once, with the outline shown a moment. */
+	void setMinimapSize(int size) {
+		if (BIConfig.INSTANCE.minimapSize == size) return;
+		BIConfig.INSTANCE.minimapSize = size;
+		BIConfig.save();
+		sizePreviewUntil = System.currentTimeMillis() + 2500;
+	}
+
+	/** The bottom row's buttons don't overlap and all fit on screen; used by the self-test. */
+	boolean bottomRowFits() {
+		List<net.minecraft.client.gui.widget.ClickableWidget> row = new ArrayList<>();
+		for (var child : children()) {
+			if (child instanceof net.minecraft.client.gui.widget.ClickableWidget w && w.getY() == height - 26) row.add(w);
+		}
+		row.sort(java.util.Comparator.comparingInt(net.minecraft.client.gui.widget.ClickableWidget::getX));
+		for (int i = 0; i < row.size(); i++) {
+			var w = row.get(i);
+			if (w.getX() < 0 || w.getX() + w.getWidth() > width) return false;
+			if (i > 0 && row.get(i - 1).getX() + row.get(i - 1).getWidth() > w.getX()) return false;
+		}
+		return row.size() == 5;
 	}
 
 	private SliderWidget slider(int x, int y, int w, String key, int min, int max, IntSupplier getter, IntConsumer setter) {
@@ -524,6 +604,14 @@ public class MapScreen extends Screen {
 		if (menu != null) {
 			drawMenu(context, mouseX, mouseY);
 			return;
+		}
+		// While the size is being set: an outline of the minimap where it shows in game.
+		if (sizeSlider != null && BIConfig.INSTANCE.minimap && (sizeSlider.isHovered() || sizeSlider.isFocused() || System.currentTimeMillis() < sizePreviewUntil)) {
+			int[] spot = Minimap.spot(width);
+			previewDrawnAt = spot[2];
+			context.fill(spot[0], spot[1], spot[0] + spot[2], spot[1] + spot[2], 0x40000000);
+			context.drawStrokedRectangle(spot[0] - 2, spot[1] - 2, spot[2] + 4, spot[2] + 4, 0xFFFFD866);
+			context.drawCenteredTextWithShadow(textRenderer, Text.translatable("baseinsurance.map.minimap_here"), spot[0] + spot[2] / 2, spot[1] + spot[2] / 2 - 4, 0xFFFFD866);
 		}
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
 			MapMarkers.Marker pin = markerAt(mouseX, mouseY);

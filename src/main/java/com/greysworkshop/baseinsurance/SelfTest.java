@@ -550,6 +550,69 @@ public final class SelfTest {
 				check("Hoard Eye picked up the handed-over fetch list", !java.nio.file.Files.exists(handOff));
 				screenshot(client, "16_fetch_from_rebuild");
 			}
+			// ---- The minimap, from the map (M): on/off and size remembered, smaller by default ----
+			case 2246 -> {
+				client.setScreen(null);
+				BIConfig.INSTANCE.minimap = true;
+				client.setScreen(new MapScreen());
+			}
+			case 2248 -> {
+				MapScreen map = (MapScreen) client.currentScreen;
+				check("the map's buttons (with Minimap and Size) fit without overlapping (" + map.width + " wide)", map.bottomRowFits());
+				map.toggleMinimap();
+				check("turning the minimap off on the map is saved", !BIConfig.INSTANCE.minimap && !BIConfig.read().minimap);
+				client.setScreen(null);
+				framesAt = Minimap.frames();
+			}
+			case 2252 -> {
+				if (waitForFrames()) return;
+				check("...and it's gone from the screen", Minimap.leftIn(BIConfig.INSTANCE.minimapCorner) == -1);
+			}
+			case 2254 -> {
+				client.setScreen(new MapScreen());
+				MapScreen map = (MapScreen) client.currentScreen;
+				map.toggleMinimap();
+				// A real change (the last run may have left it at 100), as dragging the slider makes.
+				map.setMinimapSize(96);
+				map.setMinimapSize(100);
+				BIConfig saved = BIConfig.read();
+				check("turning it back on and resizing it on the map is saved", saved.minimap && saved.minimapSize == 100 && BIConfig.INSTANCE.minimapSize == 100);
+				framesAt = Minimap.frames();
+			}
+			case 2256 -> {
+				if (waitForFrames()) return;
+				screenshot(client, "17_map_minimap_size");
+				// Zoom the map in two steps, then close it: the zoom is kept for next game.
+				MapScreen map = (MapScreen) client.currentScreen;
+				check("changing the size shows the minimap's outline at that size (" + map.previewDrawnAt + ")", map.previewDrawnAt == 100);
+				zoomBefore = BIConfig.INSTANCE.mapZoom;
+				map.mouseScrolled(map.width / 3.0, map.height / 2.0, 0, 2);
+				client.setScreen(null);
+				framesAt = Minimap.frames();
+			}
+			case 2259 -> {
+				if (waitForFrames()) return;
+				int expectLeft = client.getWindow().getScaledWidth() - 100 - 4 - 2;
+				int left = Minimap.leftIn(BIConfig.Corner.TOP_RIGHT);
+				check("the minimap shows at the new size (left edge " + left + ", expected " + expectLeft + ")", left == expectLeft);
+				double expected = Math.min(16, zoomBefore * 1.25 * 1.25), kept = BIConfig.read().mapZoom;
+				check("the map's zoom is kept for next game (" + zoomBefore + " → " + kept + ", expected " + expected + ")", Math.abs(kept - expected) < 1e-9);
+				// The old default size moves to the smaller one once; a size someone picked is kept.
+				try {
+					java.nio.file.Path file = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("baseinsurance").resolve("settings.json");
+					String json = java.nio.file.Files.readString(file);
+					java.nio.file.Files.writeString(file, json.replaceAll("\"minimapSize\":\\s*\\d+", "\"minimapSize\": 112").replaceAll("\"minimapSmaller\":\\s*true", "\"minimapSmaller\": false"));
+					BIConfig first = BIConfig.read();
+					boolean moved = first.minimapSize == 80 && first.minimapSmaller;
+					java.nio.file.Files.writeString(file, json.replaceAll("\"minimapSize\":\\s*\\d+", "\"minimapSize\": 150").replaceAll("\"minimapSmaller\":\\s*true", "\"minimapSmaller\": false"));
+					BIConfig picked = BIConfig.read();
+					check("the old default minimap size becomes the smaller one; a picked size is kept", moved && picked.minimapSize == 150);
+					// Put the file back as it was.
+					BIConfig.save();
+				} catch (java.io.IOException e) {
+					check("the minimap size moves to the smaller default (" + e + ")", false);
+				}
+			}
 			case 2260 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
@@ -572,6 +635,21 @@ public final class SelfTest {
 	}
 
 	private static int liveEventsBefore;
+	private static double zoomBefore;
+	private static int framesAt, framesWaited;
+
+	/**
+	 * The game draws fewer frames than it ticks on a slow computer: holds this step (true) until the HUD has been drawn
+	 * twice since {@link #framesAt}, up to 10 seconds.
+	 */
+	private static boolean waitForFrames() {
+		if (Minimap.frames() >= framesAt + 2 || ++framesWaited > 200) {
+			framesWaited = 0;
+			return false;
+		}
+		tick--;
+		return true;
+	}
 
 	/** Writes a snapshot in the pre-1.4.0 format (no trusted bits), to test upgrading. */
 	private static void writeV1(Baseline baseline, java.nio.file.Path file) throws java.io.IOException {
