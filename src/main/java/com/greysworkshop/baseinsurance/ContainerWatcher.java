@@ -61,6 +61,14 @@ public final class ContainerWatcher {
 	private boolean captured;
 	private Map<String, Integer> lastContents;
 	private int stableTicks;
+	/** A hopper touches it: its contents keep changing while it's open, so they can't wait long to settle. */
+	private boolean hopperAttached;
+	/**
+	 * With a hopper the contents count as arrived after this many still ticks: a hopper moves an item every 8 game
+	 * ticks, and with lag the gap seen here can be shorter than {@link #STABLE_TICKS}. Missing items next to a hopper
+	 * are only noted, never alerted, so settling sooner can't cause a false alarm.
+	 */
+	private static final int HOPPER_STABLE_TICKS = 2;
 
 	public ContainerWatcher(BaseManager manager) {
 		this.manager = manager;
@@ -143,6 +151,7 @@ public final class ContainerWatcher {
 		captured = false;
 		lastContents = null;
 		stableTicks = 0;
+		hopperAttached = hasHopper(MinecraftClient.getInstance().world, pos);
 		pendingBase = null;
 		ScreenEvents.remove(opened).register(closed -> onClose());
 		// Your own clicks and keys change the contents: judge it as it was before them.
@@ -161,7 +170,7 @@ public final class ContainerWatcher {
 			stableTicks = 0;
 			return;
 		}
-		if (++stableTicks < STABLE_TICKS) return;
+		if (++stableTicks < (hopperAttached ? HOPPER_STABLE_TICKS : STABLE_TICKS)) return;
 		captured = true;
 		compare(now);
 	}
@@ -203,7 +212,8 @@ public final class ContainerWatcher {
 
 	private void onClose() {
 		if (screen == null) return;
-		if (captured) {
+		// A hopper kept it changing the whole time: still keep what was in it, so the record doesn't go stale.
+		if (captured || (hopperAttached && screen.getScreenHandler().getRevision() != 0)) {
 			Base.ContainerSnapshot snapshot = new Base.ContainerSnapshot();
 			snapshot.block = block;
 			snapshot.items = contents(screen.getScreenHandler());

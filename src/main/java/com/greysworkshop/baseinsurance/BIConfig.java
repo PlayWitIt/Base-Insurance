@@ -139,6 +139,8 @@ public final class BIConfig {
 	public int maxEvents = 500;
 	/** Say when a newer version is out on GitHub (once per game session). */
 	public boolean checkUpdates = true;
+	/** The version that ran last, to say once that it updated itself. */
+	public String lastVersion = "";
 	/** A version you said not to be told about again. */
 	public String skippedVersion = "";
 	/** Whether the "new here? open the guide" message has been shown. */
@@ -174,6 +176,7 @@ public final class BIConfig {
 				if (loaded.friendNotes == null) loaded.friendNotes = new java.util.HashMap<>();
 				if (loaded.serverReach == null) loaded.serverReach = new java.util.HashMap<>();
 				if (loaded.skippedVersion == null) loaded.skippedVersion = "";
+				if (loaded.lastVersion == null) loaded.lastVersion = "";
 				if (loaded.ignoredBlocks == null) loaded.ignoredBlocks = new ArrayList<>();
 				if (loaded.alertStyle == null) loaded.alertStyle = AlertStyle.CHAT;
 				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;

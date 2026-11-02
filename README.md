@@ -83,8 +83,10 @@ Everything Base Insurance does while the game handles a packet (chunks loading a
 in it is logged and skipped instead of disconnecting you.
 
 ## Updates
-Once per game session the mod says in chat if a newer version is out on GitHub, with a download link. Nothing
-installs by itself; turn it off under Settings → Data.
+The mod keeps itself up to date. Once per game session it asks GitHub for the latest release. A newer jar for your
+Minecraft version is downloaded into your mods folder and checked against the SHA-256 GitHub publishes. When you
+close the game, it's swapped in for the old jar, and one line in chat says so next time. Nothing to click. Turn it
+off under Settings → Data (**Update by itself**).
 
 All `/bi` commands are client-side and never reach the server.
 

@@ -106,7 +106,10 @@ public final class SelfTest {
 				client.player.networkHandler.sendChatCommand("bi create Test 10 3 6");
 				client.player.networkHandler.sendChatCommand("bi create");
 			}
-			case 106 -> check("plain /bi create opens the map", client.currentScreen instanceof MapScreen);
+			case 106 -> {
+				check("plain /bi create opens the map", client.currentScreen instanceof MapScreen);
+				updaterChecks();
+			}
 			case 112 -> screenshot(client, "0_create_on_map");
 			case 114 -> {
 				if (client.currentScreen instanceof MapScreen map) map.confirm();
@@ -619,6 +622,24 @@ public final class SelfTest {
 	}
 
 	static int passed, failed;
+
+	/** Updating by itself, offline parts: the version in a file name, and the helper's swap (the repository is private, so no download). */
+	private static void updaterChecks() {
+		check("an update's version is read from its file name", "1.17.1".equals(UpdateCheck.versionOf("base-insurance-1.17.1+1.21.11.jar.update"))
+				&& UpdateCheck.versionOf("naughty-or-nice-1.0.0+1.21.11.jar") == null && UpdateCheck.newer("1.10.0", "1.9.2"));
+		try {
+			java.nio.file.Path dir = java.nio.file.Files.createTempDirectory("bi-update-test");
+			java.nio.file.Path old = dir.resolve("base-insurance-1.0.0+1.21.11.jar"), update = dir.resolve("base-insurance-1.1.0+1.21.11.jar.update"),
+					jar = dir.resolve("base-insurance-1.1.0+1.21.11.jar");
+			java.nio.file.Files.writeString(old, "old");
+			java.nio.file.Files.writeString(update, "new");
+			check("the helper swaps an update in", UpdateSwap.swap(old, update, jar, 2000) && !java.nio.file.Files.exists(old)
+					&& !java.nio.file.Files.exists(update) && "new".equals(java.nio.file.Files.readString(jar)));
+			check("a file that isn't the release is refused", !UpdateCheck.verify(jar, "00", BaseInsuranceClient.MOD_ID, "1.1.0"));
+		} catch (Exception e) {
+			check("updating by itself works (" + e + ")", false);
+		}
+	}
 
 	static void check(String what, boolean ok) {
 		if (ok) passed++;

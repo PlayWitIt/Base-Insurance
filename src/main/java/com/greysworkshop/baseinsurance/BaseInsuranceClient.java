@@ -59,6 +59,11 @@ public class BaseInsuranceClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		INSTANCE = this;
 		BIConfig.load();
+		try {
+			UpdateCheck.init();
+		} catch (Exception e) {
+			LOGGER.warn("Couldn't look for a downloaded update", e);
+		}
 		ModsPanel.install(panelEntry());
 
 		KeyBinding.Category category = KeyBinding.Category.create(Identifier.of(MOD_ID, "main"));
