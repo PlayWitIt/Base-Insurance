@@ -360,10 +360,10 @@ if (wait > 0) {
 				SelfTest.check("M opens the map", client.currentScreen instanceof MapScreen);
 				if (client.currentScreen instanceof MapScreen map && map.minimapButton != null) {
 					SelfTest.check("the map has a Minimap button that says on (" + map.minimapButton.getMessage().getString() + ")",
-							map.minimapButton.getMessage().getString().equals("Minimap: ON"));
+							java.util.Set.of("Hide minimap", "Minimap ✔").contains(map.minimapButton.getMessage().getString()));
 					map.minimapButton.onPress(new KeyInput(GLFW.GLFW_KEY_ENTER, 0, 0));
 					SelfTest.check("pressing it hides the minimap and says off (" + map.minimapButton.getMessage().getString() + ")",
-							!BIConfig.INSTANCE.minimap && map.minimapButton.getMessage().getString().equals("Minimap: OFF"));
+							!BIConfig.INSTANCE.minimap && java.util.Set.of("Show minimap", "Minimap ✖").contains(map.minimapButton.getMessage().getString()));
 					SelfTest.screenshot(client, "23_map_minimap_button");
 				} else {
 					SelfTest.check("the map has a Minimap button", false);

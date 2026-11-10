@@ -56,16 +56,27 @@ while real griefing (in view or behind a wall) still is.
 Everything you explore is drawn into a map as chunks load, in vanilla map colours with hill shading, and saved per
 server and dimension, so it keeps growing every time you play.
 - **Minimap** in the top-right corner while you play: your bases (green intact, red damaged), nearby players and your
-  coordinates. Zoom it with **-** and **=**, hide it with the Minimap button on the full map (or `/bi minimap`). It can turn with you, change corner and size
+  coordinates. Zoom it with **-** and **=**, show or hide it with **I**, the Minimap button on the full map, or `/bi minimap`. It can turn with you, change corner and size
   in Settings → Map, and moves down out of the way of potion effect icons.
-- **M** opens the full map, and M or Esc closes it. At the bottom of the map, **Minimap: ON/OFF** shows or hides the
-  minimap, and **Size** makes it bigger or smaller (an outline shows how big it will be). Both are saved at once and
-  kept in every game after, and so is how far you zoomed the map. The minimap is small by default (80).
-  Naughty or Nice's trail radar has its own key (**O**).
-- **Full map**: follows you as you move, drag to look around (**Center on me** to follow again), scroll to
-  zoom from 16 pixels per block out to 32 blocks per pixel. Click a base for its report.
-  Right-click anywhere for **Walk here** (needs Baritone; with Naughty or Nice it goes as one of its trips, using
-  nether highways and flying when it can) or **Copy coordinates**.
+- **M** opens the full map, and M or Esc closes it. It opens at once, however big your world is: a coarse picture of
+  everything shows straight away and the detail sharpens on top. The big picture is built in the background as soon as
+  you join and saved, so it's ready before you press M.
+- At the bottom of the map: **Center on me**, **Show all** (zooms out to everything you've ever explored there),
+  **Go to…** (type coordinates, or press **G**), **New base**, **Hide minimap / Show minimap**, the minimap's **Size**
+  (an outline shows how big it will be), and **Done**. On a narrow screen they're shortened ("Me", "Minimap ✔"; hover
+  for what they do). The minimap setting, its size and how far you zoomed are saved and kept in every game after.
+  Naughty or Nice's trail radar has its own key (**K**).
+- **Full map**: follows you as you move, drag to look around, scroll to zoom from 16 pixels per block out to 4,096
+  blocks per pixel, enough for a world millions of blocks across. A scale bar shows how far things are, and the top
+  says how much you've explored. Click a base for its report.
+- **Right-click** anywhere: how far it is and which way, the same spot in the Nether (or the Overworld from the Nether),
+  **Walk here** (needs Baritone; with Naughty or Nice it goes as one of its trips, using nether highways and flying
+  when it can), **Copy coordinates**, **Pin here…** (name it and press Enter), and **Measure from me**.
+- **Pins**: your own pins (gold flags) and the last 5 places you died (red crosses, added by themselves) are on the
+  map and listed on the left under your bases. Click one to zoom to it; right-click it to remove it or walk there.
+  They're kept per server.
+- **Measure**: shift-drag on the map for a ruler: how many blocks and which way, how long sprinting or by elytra, and
+  how far it would be through the Nether.
 - Works on servers that send wrong surface heights with their chunks (common on older servers joined through
   ViaVersion): the map checks them and finds the ground itself. Chunks missed while joining are picked up a moment later.
 - **Player sightings:** with Naughty or Nice, diamonds where it last saw the players on your lists (hover for who,

@@ -27,7 +27,9 @@ import java.util.function.IntSupplier;
  * area for a new base.
  */
 public class MapScreen extends Screen {
-	private enum Drag { NONE, PAN, MOVE, N, S, E, W, NE, NW, SE, SW }
+	private enum Drag { NONE, PAN, RULER, MOVE, N, S, E, W, NE, NW, SE, SW }
+	/** What the text box at the top is for, when it's open. */
+	private enum Field { NONE, GOTO, PIN }
 
 	private static final int PANEL_WIDTH = 168;
 	private static final int ACCENT = 0xFF40E0FF;
@@ -36,7 +38,8 @@ public class MapScreen extends Screen {
 	private static final int WHITE = 0xFFF0F0F0;
 	private static final int PANEL = 0xE0101018;
 	private static final int BORDER = 0xFF33334D;
-	private static final double MIN_ZOOM = 1 / 32.0;
+	/** Far enough out to see a world millions of blocks across on one screen. */
+	static final double MIN_ZOOM = 1 / 4096.0;
 	private static final double MAX_ZOOM = 16;
 	private static final int MIN_SIZE = 4;
 
@@ -72,12 +75,25 @@ public class MapScreen extends Screen {
 	/** Why the last Walk here didn't go, shown in the menu. */
 	private String menuNote;
 	private String error;
+	/** The box at the top: go to coordinates, or name a pin. */
+	private TextFieldWidget topField;
+	private Field fieldMode = Field.NONE;
+	/** Where the pin being named goes. */
+	private int pinX, pinZ;
+	/** The spot Go to went to, marked until the map closes; null if none. */
+	private static int[] gotoMark;
+	/** The ruler, in blocks {fromX, fromZ, toX, toZ}; null when there's none. */
+	private double[] ruler;
+	/** The pin under the right-click, if any. */
+	private MapPins.Pin menuPin;
 
 	private Drag drag = Drag.NONE;
 	private double pressX, pressY;
 	private boolean moved;
 	private int[] dragStart;
+	/** Rows of the list in the corner: index, y, right edge, and 0 for a base or 1 for a pin. */
 	private final List<int[]> baseListRows = new ArrayList<>();
+	private final List<MapPins.Pin> listedPins = new ArrayList<>();
 
 	public MapScreen() {
 		this(false, null, null);
@@ -169,27 +185,103 @@ public class MapScreen extends Screen {
 
 	// ---- Widgets ----
 
+	/** The bottom buttons are narrow, so they have short labels. */
+	private static boolean compact;
+
 	private static Text minimapLabel() {
-		return Text.translatable("baseinsurance.map.minimap", Text.translatable(BIConfig.INSTANCE.minimap ? "options.on" : "options.off"));
+		return Text.translatable((BIConfig.INSTANCE.minimap ? "baseinsurance.map.minimap_hide" : "baseinsurance.map.minimap_show") + (compact ? "_short" : ""));
+	}
+
+	/** Zooms out (or in) to fit everything you've ever explored in this dimension. */
+	void showAll() {
+		int[] b = BaseInsuranceClient.INSTANCE.worldMap.exploredBounds();
+		if (b == null) return;
+		following = false;
+		centerX = (b[0] + b[2]) / 2.0;
+		centerZ = (b[1] + b[3]) / 2.0;
+		zoom = MathHelper.clamp(Math.min((mapRight() - 40) / (double) Math.max(1, b[2] - b[0]), (height - 80) / (double) Math.max(1, b[3] - b[1])), MIN_ZOOM, MAX_ZOOM);
+	}
+
+	private void openField(Field mode, String text) {
+		if (topField == null) return;
+		fieldMode = mode;
+		topField.visible = true;
+		topField.setText(text);
+		topField.setPlaceholder(Text.translatable(mode == Field.GOTO ? "baseinsurance.map.go_to_hint" : "baseinsurance.map.pin_hint").withColor(0xFF707080));
+		setFocused(topField);
+		topField.setFocused(true);
+	}
+
+	private void closeField() {
+		fieldMode = Field.NONE;
+		if (topField != null) {
+			topField.visible = false;
+			topField.setFocused(false);
+		}
+		setFocused(null);
+	}
+
+	/** Enter in the top box: go to the coordinates, or save the pin. */
+	private void submitField() {
+		String text = topField.getText().trim();
+		if (fieldMode == Field.PIN) {
+			MapPins.add(text.isEmpty() ? "Pin " + (MapPins.count() + 1) : text, pinX, pinZ, BaseManager.dimensionKey(client.world));
+			closeField();
+			return;
+		}
+		int[] at = parseCoords(text);
+		if (at == null) {
+			topField.setEditableColor(0xFFFF5050);
+			return;
+		}
+		topField.setEditableColor(0xFFE0E0E0);
+		following = false;
+		centerX = at[0] + 0.5;
+		centerZ = at[1] + 0.5;
+		gotoMark = at;
+		zoom = Math.max(zoom, 0.5);
+		closeField();
+	}
+
+	/** "100 200", "100, 64, 200" or "x 100 z 200": x and z. Null if it isn't coordinates. */
+	static int[] parseCoords(String text) {
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:\\.\\d+)?").matcher(text.replace("~", ""));
+		List<Double> n = new ArrayList<>();
+		while (m.find()) n.add(Double.parseDouble(m.group()));
+		if (n.size() == 2) return new int[] {(int) Math.floor(n.get(0)), (int) Math.floor(n.get(1))};
+		if (n.size() == 3) return new int[] {(int) Math.floor(n.get(0)), (int) Math.floor(n.get(2))};
+		return null;
 	}
 
 	@Override
 	protected void init() {
 		if (!createMode) {
-			// Center, New base, Minimap on/off, Minimap size ... Done: as wide as fits, up to 100 each.
-			int bw = Math.max(40, Math.min(100, (width - 12 - 4 * 4) / 5));
+			// Center, Show all, Go to, New base, Minimap on/off, Minimap size ... Done: as wide as fits, up to 90 each.
+			int bw = Math.max(36, Math.min(90, (width - 12 - 6 * 4) / 7));
 			int by = height - 26;
-			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.center"), b -> centerOnPlayer())
-					.dimensions(6, by, bw, 20).build());
-			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.new_base"),
+			// Short labels when the buttons are narrow, so none is cut off; the tooltips say the rest.
+			compact = bw < 76;
+			addDrawableChild(ButtonWidget.builder(Text.translatable(compact ? "baseinsurance.map.center_short" : "baseinsurance.map.center"), b -> centerOnPlayer())
+					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.center"))).dimensions(6, by, bw, 20).build());
+			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.show_all"), b -> showAll())
+					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.show_all_tip"))).dimensions(6 + (bw + 4), by, bw, 20).build());
+			addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.go_to"), b -> openField(Field.GOTO, ""))
+					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.go_to_hint"))).dimensions(6 + 2 * (bw + 4), by, bw, 20).build());
+			addDrawableChild(ButtonWidget.builder(Text.translatable(compact ? "baseinsurance.map.new_base_short" : "baseinsurance.map.new_base"),
 					b -> client.setScreen(forCreate(Commands.defaultName())))
-					.dimensions(6 + (bw + 4), by, bw, 20).build());
+					.dimensions(6 + 3 * (bw + 4), by, bw, 20).build());
 			minimapButton = addDrawableChild(ButtonWidget.builder(minimapLabel(), b -> toggleMinimap())
-					.dimensions(6 + 2 * (bw + 4), by, bw, 20).build());
-			sizeSlider = addDrawableChild(minimapSizeSlider(6 + 3 * (bw + 4), by, bw));
+					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.minimap_tip"))).dimensions(6 + 4 * (bw + 4), by, bw, 20).build());
+			sizeSlider = addDrawableChild(minimapSizeSlider(6 + 5 * (bw + 4), by, bw));
 			sizeSlider.active = BIConfig.INSTANCE.minimap;
 			addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, b -> close())
 					.dimensions(width - 6 - bw, by, bw, 20).build());
+			int fw = Math.min(260, width - 40);
+			topField = new TextFieldWidget(textRenderer, width / 2 - fw / 2, 34, fw, 16, Text.translatable("baseinsurance.map.go_to"));
+			topField.setMaxLength(48);
+			topField.visible = fieldMode != Field.NONE;
+			addDrawableChild(topField);
+			if (fieldMode != Field.NONE) setFocused(topField);
 			return;
 		}
 
@@ -229,6 +321,7 @@ public class MapScreen extends Screen {
 	@Override
 	public void removed() {
 		super.removed();
+		gotoMark = null;
 		// Keep the zoom for next game (not the zoom a base was fitted to while making or resizing one).
 		if (!createMode && editing == null && zoom != BIConfig.INSTANCE.mapZoom) {
 			BIConfig.INSTANCE.mapZoom = zoom;
@@ -295,7 +388,7 @@ public class MapScreen extends Screen {
 			if (w.getX() < 0 || w.getX() + w.getWidth() > width) return false;
 			if (i > 0 && row.get(i - 1).getX() + row.get(i - 1).getWidth() > w.getX()) return false;
 		}
-		return row.size() == 5;
+		return row.size() == 7;
 	}
 
 	private SliderWidget slider(int x, int y, int w, String key, int min, int max, IntSupplier getter, IntConsumer setter) {
@@ -384,27 +477,42 @@ public class MapScreen extends Screen {
 			return true;
 		}
 		if (super.mouseClicked(click, doubled)) return true;
+		if (fieldMode != Field.NONE) closeField();
 		if (mx >= mapRight()) return false;
-		// Right-click: walk to the spot, or copy where it is.
+		// Right-click: walk to the spot, copy where it is, pin it.
 		if (click.button() == 1 && !createMode) {
 			openMenu(mx, my);
 			return true;
 		}
+		ruler = null;
 		pressX = mx;
 		pressY = my;
 		moved = false;
 
-		// The base list in the corner: click to jump to a base.
+		// The list in the corner: click to jump to a base or a pin.
 		for (int[] row : baseListRows) {
 			if (my >= row[1] && my < row[1] + 11 && mx >= 6 && mx < row[2]) {
-				Base base = BaseInsuranceClient.INSTANCE.manager.all().get(row[0]);
 				following = false;
-				centerX = (base.minX + base.maxX + 1) / 2.0;
-				centerZ = (base.minZ + base.maxZ + 1) / 2.0;
+				if (row[3] == 0) {
+					Base base = BaseInsuranceClient.INSTANCE.manager.all().get(row[0]);
+					centerX = (base.minX + base.maxX + 1) / 2.0;
+					centerZ = (base.minZ + base.maxZ + 1) / 2.0;
+				} else {
+					MapPins.Pin pin = listedPins.get(row[0]);
+					centerX = pin.x + 0.5;
+					centerZ = pin.z + 0.5;
+					zoom = Math.max(zoom, 0.5);
+				}
 				return true;
 			}
 		}
 
+		// Shift-drag: measure.
+		if (!createMode && click.hasShift()) {
+			drag = Drag.RULER;
+			ruler = new double[] {worldX(mx), worldZ(my), worldX(mx), worldZ(my)};
+			return true;
+		}
 		drag = createMode ? handleAt(mx, my) : Drag.PAN;
 		dragStart = new int[]{selMinX, selMaxX, selMinZ, selMaxZ, (int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my))};
 		return true;
@@ -414,6 +522,7 @@ public class MapScreen extends Screen {
 	void openMenu(double mx, double my) {
 		menu = new int[] {(int) mx, (int) my, (int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my))};
 		menuNote = null;
+		menuPin = pinAt(mx, my);
 		drag = Drag.NONE;
 	}
 
@@ -422,9 +531,26 @@ public class MapScreen extends Screen {
 		mouseClicked(new Click(screenX(bx + 0.5), screenY(bz + 0.5), new net.minecraft.client.input.MouseInput(1, 0)), false);
 	}
 
-	/** A menu row: 0 walks there with Baritone, 1 copies the coordinates. */
+	/** A menu row: 0 walks there with Baritone, 1 copies the coordinates, 2 pins it, 3 removes the pin, 4 measures from you. */
 	void menuPick(int which) {
 		int x = menu[2], z = menu[3];
+		if (which == 2) {
+			menu = null;
+			pinX = x;
+			pinZ = z;
+			openField(Field.PIN, "");
+			return;
+		}
+		if (which == 3) {
+			if (menuPin != null) MapPins.remove(menuPin);
+			menu = null;
+			return;
+		}
+		if (which == 4) {
+			if (client.player != null) ruler = new double[] {client.player.getX(), client.player.getZ(), x + 0.5, z + 0.5};
+			menu = null;
+			return;
+		}
 		if (which == 1) {
 			client.keyboard.setClipboard(x + " " + z);
 			if (client.player != null) client.player.sendMessage(Text.literal("Copied " + x + " " + z), true);
@@ -446,27 +572,50 @@ public class MapScreen extends Screen {
 		menuRows.clear();
 		TextRenderer font = textRenderer;
 		boolean can = Travel.available();
-		String title = "X " + menu[2] + "  Z " + menu[3];
-		String walk = can ? "Walk here" : "Walk here (needs Baritone)";
-		String copy = "Copy coordinates";
+		String title = (menuPin != null ? menuPin.name + ":  " : "") + "X " + menu[2] + "  Z " + menu[3];
+		// What's worth knowing about the spot: how far, which way, and the same place in the other dimension.
+		List<String> facts = new ArrayList<>();
+		if (client.player != null) {
+			double dx = menu[2] + 0.5 - client.player.getX(), dz = menu[3] + 0.5 - client.player.getZ();
+			facts.add(String.format(Locale.ROOT, "%,d blocks %s of you", Math.round(Math.hypot(dx, dz)), compass(dx, dz)));
+		}
+		String dim = BaseManager.dimensionKey(client.world);
+		if (dim.equals("minecraft:overworld")) facts.add(String.format(Locale.ROOT, "In the Nether: X %d  Z %d", Math.floorDiv(menu[2], 8), Math.floorDiv(menu[3], 8)));
+		else if (dim.equals("minecraft:the_nether")) facts.add(String.format(Locale.ROOT, "In the Overworld: X %d  Z %d", menu[2] * 8, menu[3] * 8));
+		List<String> labels = new ArrayList<>(List.of(can ? "Walk here" : "Walk here (needs Baritone)", "Copy coordinates", "Pin here…"));
+		List<Integer> ids = new ArrayList<>(List.of(0, 1, 2));
+		if (menuPin != null) {
+			labels.add("Remove this pin");
+			ids.add(3);
+		}
+		labels.add("Measure from me");
+		ids.add(4);
 		String note = menuNote;
-		int w = Math.max(font.getWidth(title), Math.max(font.getWidth(walk), font.getWidth(copy))) + 20;
+		int w = font.getWidth(title);
+		for (String l : labels) w = Math.max(w, font.getWidth(l));
+		for (String f : facts) w = Math.max(w, font.getWidth(f));
+		w += 20;
 		if (note != null) w = Math.max(w, Math.min(220, font.getWidth(note) + 12));
 		List<net.minecraft.text.OrderedText> noteLines = note == null ? List.of() : font.wrapLines(Text.literal(note), w - 12);
 		int rowH = 13;
-		int h = 16 + 2 * rowH + 4 + noteLines.size() * 10;
+		int h = 16 + facts.size() * 10 + 2 + labels.size() * rowH + 4 + noteLines.size() * 10;
 		int x = Math.max(4, Math.min(menu[0], width - w - 4)), y = Math.max(4, Math.min(menu[1], height - h - 4));
 		context.fill(x, y, x + w, y + h, 0xF0181820);
 		context.drawStrokedRectangle(x, y, w, h, 0xFF6A6AB4);
 		context.drawTextWithShadow(font, title, x + 6, y + 5, GOLD);
 		int ry = y + 16;
-		String[] labels = {walk, copy};
-		for (int i = 0; i < 2; i++) {
-			boolean enabled = i == 1 || can;
+		for (String f : facts) {
+			context.drawTextWithShadow(font, f, x + 6, ry, GRAY);
+			ry += 10;
+		}
+		ry += 2;
+		for (int i = 0; i < labels.size(); i++) {
+			int id = ids.get(i);
+			boolean enabled = id != 0 || can;
 			boolean hover = enabled && mouseX >= x + 2 && mouseX < x + w - 2 && mouseY >= ry && mouseY < ry + rowH;
 			if (hover) context.fill(x + 2, ry, x + w - 2, ry + rowH, 0xC0303048);
-			context.drawTextWithShadow(font, labels[i], x + 8, ry + 3, !enabled ? 0xFF707080 : hover ? 0xFFFFFFFF : 0xFFD0D0E0);
-			if (enabled) menuRows.add(new int[] {x + 2, ry, x + w - 2, ry + rowH, i});
+			context.drawTextWithShadow(font, labels.get(i), x + 8, ry + 3, !enabled ? 0xFF707080 : hover ? 0xFFFFFFFF : 0xFFD0D0E0);
+			if (enabled) menuRows.add(new int[] {x + 2, ry, x + w - 2, ry + rowH, id});
 			ry += rowH;
 		}
 		ry += 2;
@@ -504,6 +653,11 @@ public class MapScreen extends Screen {
 		int wz = (int) Math.floor(worldZ(click.y()));
 		int ox = wx - dragStart[4], oz = wz - dragStart[5];
 		switch (drag) {
+			case RULER -> {
+				ruler[2] = worldX(click.x());
+				ruler[3] = worldZ(click.y());
+				return true;
+			}
 			case PAN -> {
 				if (moved) following = false;
 				centerX -= dx / zoom;
@@ -535,6 +689,16 @@ public class MapScreen extends Screen {
 				drag = Drag.NONE;
 				client.setScreen(new ReportScreen(base));
 				return true;
+			}
+		}
+		if (drag == Drag.PAN && !moved && !createMode) {
+			// A click on a pin zooms in on it.
+			MapPins.Pin pin = pinAt(click.x(), click.y());
+			if (pin != null) {
+				following = false;
+				centerX = pin.x + 0.5;
+				centerZ = pin.z + 0.5;
+				zoom = Math.max(zoom, 1);
 			}
 		}
 		drag = Drag.NONE;
@@ -585,6 +749,8 @@ public class MapScreen extends Screen {
 		if (createMode) drawSelection(context);
 		drawTrustCircle(context);
 		drawMarkers(context);
+		drawPins(context);
+		drawRuler(context);
 		drawOtherPlayers(context, delta);
 		drawPlayer(context, delta);
 		context.disableScissor();
@@ -614,9 +780,20 @@ public class MapScreen extends Screen {
 			context.drawCenteredTextWithShadow(textRenderer, Text.translatable("baseinsurance.map.minimap_here"), spot[0] + spot[2] / 2, spot[1] + spot[2] / 2 - 4, 0xFFFFD866);
 		}
 		if (!createMode && drag == Drag.NONE && mouseX < mapRight()) {
-			MapMarkers.Marker pin = markerAt(mouseX, mouseY);
-			Base base = pin == null ? baseAt(mouseX, mouseY) : null;
-			if (pin != null) {
+			MapPins.Pin own = pinAt(mouseX, mouseY);
+			MapMarkers.Marker pin = own == null ? markerAt(mouseX, mouseY) : null;
+			Base base = pin == null && own == null ? baseAt(mouseX, mouseY) : null;
+			if (own != null) {
+				List<Text> lines = new ArrayList<>();
+				lines.add(Text.literal(own.name).withColor(own.color()));
+				lines.add(Text.literal("X " + own.x + "  Z " + own.z).withColor(0xFFB0B0C0));
+				if (client.player != null) {
+					double dx = own.x + 0.5 - client.player.getX(), dz = own.z + 0.5 - client.player.getZ();
+					lines.add(Text.literal(String.format(Locale.ROOT, "%,d blocks %s", Math.round(Math.hypot(dx, dz)), compass(dx, dz))).withColor(0xFFB0B0C0));
+				}
+				lines.add(Text.literal("Right-click to remove or walk there").withColor(0xFF707080));
+				context.drawTooltip(textRenderer, lines, mouseX, mouseY);
+			} else if (pin != null) {
 				List<Text> lines = new ArrayList<>();
 				lines.add(Text.literal(pin.label()).withColor(pin.color()));
 				if (!pin.detail().isEmpty()) lines.add(Text.literal(pin.detail()).withColor(0xFFB0B0C0));
@@ -720,6 +897,110 @@ public class MapScreen extends Screen {
 		}
 	}
 
+	/** Your pins (gold flags), the spots you died (red crosses), and where Go to went (a cyan ring). */
+	private void drawPins(DrawContext context) {
+		if (viewDimension == null) return;
+		for (MapPins.Pin pin : MapPins.in(viewDimension)) {
+			int sx = (int) screenX(pin.x + 0.5), sy = (int) screenY(pin.z + 0.5);
+			if (pin.death) {
+				for (int i = -3; i <= 3; i++) {
+					context.fill(sx + i - 1, sy + i - 1, sx + i + 2, sy + i + 2, 0xFF000000);
+					context.fill(sx + i - 1, sy - i - 1, sx + i + 2, sy - i + 2, 0xFF000000);
+				}
+				for (int i = -3; i <= 3; i++) {
+					context.fill(sx + i, sy + i, sx + i + 1, sy + i + 1, pin.color());
+					context.fill(sx + i, sy - i, sx + i + 1, sy - i + 1, pin.color());
+				}
+			} else {
+				context.fill(sx - 1, sy - 9, sx + 2, sy + 1, 0xFF000000);
+				context.fill(sx, sy - 8, sx + 1, sy, 0xFFE0E0E0);
+				context.fill(sx + 1, sy - 9, sx + 7, sy - 3, 0xFF000000);
+				context.fill(sx + 1, sy - 8, sx + 6, sy - 4, pin.color());
+			}
+			if (zoom >= 0.25) {
+				int w = textRenderer.getWidth(pin.name);
+				context.fill(sx - w / 2 - 2, sy + 4, sx + w / 2 + 2, sy + 14, 0xA0000000);
+				context.drawTextWithShadow(textRenderer, pin.name, sx - w / 2, sy + 5, pin.color());
+			}
+		}
+		if (gotoMark != null) {
+			int sx = (int) screenX(gotoMark[0] + 0.5), sy = (int) screenY(gotoMark[1] + 0.5);
+			for (int a = 0; a < 32; a++) {
+				double t = a / 32.0 * Math.PI * 2;
+				int x = (int) Math.round(sx + Math.cos(t) * 6), y = (int) Math.round(sy + Math.sin(t) * 6);
+				context.fill(x, y, x + 1, y + 1, ACCENT);
+			}
+		}
+	}
+
+	private MapPins.Pin pinAt(double mx, double my) {
+		if (viewDimension == null) return null;
+		MapPins.Pin best = null;
+		double bestDistance = 7;
+		for (MapPins.Pin pin : MapPins.in(viewDimension)) {
+			double d = Math.hypot(screenX(pin.x + 0.5) - mx, screenY(pin.z + 0.5) - my - (pin.death ? 0 : -4));
+			if (d < bestDistance) {
+				best = pin;
+				bestDistance = d;
+			}
+		}
+		return best;
+	}
+
+	/** The ruler: a line with how far it is, which way, and how long it takes to get there. */
+	private void drawRuler(DrawContext context) {
+		if (ruler == null) return;
+		double x0 = screenX(ruler[0]), y0 = screenY(ruler[1]), x1 = screenX(ruler[2]), y1 = screenY(ruler[3]);
+		double length = Math.hypot(x1 - x0, y1 - y0);
+		int steps = (int) Math.min(4000, Math.max(1, length));
+		for (int i = 0; i <= steps; i++) {
+			int x = (int) Math.round(x0 + (x1 - x0) * i / steps), y = (int) Math.round(y0 + (y1 - y0) * i / steps);
+			context.fill(x, y, x + 1, y + 1, (i / 4) % 2 == 0 ? 0xFFFFFFFF : 0xFF000000);
+		}
+		double dx = ruler[2] - ruler[0], dz = ruler[3] - ruler[1], blocks = Math.hypot(dx, dz);
+		List<String> lines = new ArrayList<>();
+		lines.add(String.format(Locale.ROOT, "%,d blocks %s", Math.round(blocks), compass(dx, dz)));
+		lines.add("Sprint " + duration(blocks / 5.6) + " · Elytra " + duration(blocks / 30));
+		if (BaseManager.dimensionKey(client.world).equals("minecraft:overworld") && blocks > 800) {
+			lines.add(String.format(Locale.ROOT, "Through the Nether: %,d blocks (%s sprinting)", Math.round(blocks / 8), duration(blocks / 8 / 5.6)));
+		}
+		int w = 0;
+		for (String l : lines) w = Math.max(w, textRenderer.getWidth(l));
+		int lx = (int) Math.min(width - w - 8, Math.max(4, (x0 + x1) / 2 + 8)), ly = (int) Math.max(30, Math.min(height - 60, (y0 + y1) / 2 - 6));
+		context.fill(lx - 3, ly - 3, lx + w + 3, ly + lines.size() * 10 + 1, 0xE0101018);
+		for (int i = 0; i < lines.size(); i++) context.drawTextWithShadow(textRenderer, lines.get(i), lx, ly + i * 10, i == 0 ? WHITE : GRAY);
+	}
+
+	static String compass(double dx, double dz) {
+		if (Math.abs(dx) < 1 && Math.abs(dz) < 1) return "here";
+		String[] names = {"S", "SW", "W", "NW", "N", "NE", "E", "SE"};
+		double angle = Math.toDegrees(Math.atan2(-dx, dz));
+		return names[Math.floorMod((int) Math.round(angle / 45), 8)];
+	}
+
+	static String duration(double seconds) {
+		long s = Math.round(seconds);
+		if (s < 60) return s + "s";
+		if (s < 3600) return (s / 60) + "m " + (s % 60) + "s";
+		return (s / 3600) + "h " + (s % 3600 / 60) + "m";
+	}
+
+	/** A scale bar: a round number of blocks that's a sensible width at this zoom. */
+	private void drawScale(DrawContext context, int right) {
+		double target = 80 / zoom;
+		double step = Math.pow(10, Math.floor(Math.log10(target)));
+		double blocks = target >= 5 * step ? 5 * step : target >= 2 * step ? 2 * step : step;
+		int px = (int) Math.round(blocks * zoom);
+		int x1 = right - 10, x0 = x1 - px, y = height - 46;
+		String label = blocks >= 1000 ? String.format(Locale.ROOT, "%,d k", Math.round(blocks / 1000)) : String.format(Locale.ROOT, "%d", Math.round(blocks));
+		label += " blocks";
+		context.fill(x0 - 4, y - 12, x1 + 4, y + 4, PANEL);
+		context.fill(x0, y, x1, y + 2, WHITE);
+		context.fill(x0, y - 3, x0 + 1, y + 2, WHITE);
+		context.fill(x1 - 1, y - 3, x1, y + 2, WHITE);
+		context.drawTextWithShadow(textRenderer, label, x1 - textRenderer.getWidth(label), y - 11, GRAY);
+	}
+
 	private MapMarkers.Marker markerAt(double mx, double my) {
 		MapMarkers.Marker best = null;
 		double bestDistance = 6;
@@ -770,14 +1051,25 @@ public class MapScreen extends Screen {
 		if (mouseX < right) {
 			info += String.format(Locale.ROOT, "  ·  X %d  Z %d", (int) Math.floor(worldX(mouseX)), (int) Math.floor(worldZ(mouseY)));
 		}
-		context.fill(4, 4, 12 + Math.max(font.getWidth(title), font.getWidth(info)), 28, PANEL);
+		WorldMap map = BaseInsuranceClient.INSTANCE.worldMap;
+		long explored = map.exploredBlocks();
+		String known = explored <= 0 ? "" : explored >= 1_000_000
+				? String.format(Locale.ROOT, "Explored about %.1f km² · %,d tiles", explored / 1_000_000.0, map.tileCount())
+				: String.format(Locale.ROOT, "Explored about %,d blocks² · %,d tiles", explored, map.tileCount());
+		int loading = map.stillLoading();
+		if (loading > 0) known += (known.isEmpty() ? "" : "  ·  ") + "Filling in…";
+		int boxW = Math.max(font.getWidth(title), Math.max(font.getWidth(info), font.getWidth(known)));
+		context.fill(4, 4, 12 + boxW, known.isEmpty() ? 28 : 38, PANEL);
 		context.drawTextWithShadow(font, title, 8, 7, GOLD);
 		context.drawTextWithShadow(font, info, 8, 17, GRAY);
+		if (!known.isEmpty()) context.drawTextWithShadow(font, known, 8, 27, loading > 0 ? 0xFFFFD866 : GRAY);
+		if (!createMode) drawScale(context, right);
 
 		// Base list.
 		baseListRows.clear();
+		listedPins.clear();
 		if (!createMode) {
-			int y = 34;
+			int y = known.isEmpty() ? 34 : 44;
 			List<Base> all = BaseInsuranceClient.INSTANCE.manager.all();
 			String here = BaseManager.dimensionKey(client.world);
 			for (int i = 0; i < all.size(); i++) {
@@ -788,7 +1080,21 @@ public class MapScreen extends Screen {
 				boolean hover = mouseX >= 4 && mouseX < 4 + w && mouseY >= y - 1 && mouseY < y + 10;
 				context.fill(4, y - 1, 4 + w, y + 10, hover ? 0xC0303048 : PANEL);
 				context.drawTextWithShadow(font, line, 8, y, base.damageCount() == 0 ? 0xFF50FF70 : 0xFFFF5050);
-				baseListRows.add(new int[]{i, y, 4 + w});
+				baseListRows.add(new int[]{i, y, 4 + w, 0});
+				y += 12;
+			}
+			// Pins and deaths below, newest first, as many as fit.
+			List<MapPins.Pin> pins = new ArrayList<>(MapPins.in(here));
+			pins.sort((a, b) -> Long.compare(b.time, a.time));
+			for (MapPins.Pin pin : pins) {
+				if (y > height - 70) break;
+				String line = (pin.death ? "✖ " : "⚑ ") + pin.name;
+				int w = font.getWidth(line) + 8;
+				boolean hover = mouseX >= 4 && mouseX < 4 + w && mouseY >= y - 1 && mouseY < y + 10;
+				context.fill(4, y - 1, 4 + w, y + 10, hover ? 0xC0303048 : PANEL);
+				context.drawTextWithShadow(font, line, 8, y, pin.color());
+				baseListRows.add(new int[]{listedPins.size(), y, 4 + w, 1});
+				listedPins.add(pin);
 				y += 12;
 			}
 		}
@@ -925,6 +1231,25 @@ public class MapScreen extends Screen {
 	public boolean keyPressed(net.minecraft.client.input.KeyInput key) {
 		if (menu != null && key.key() == GLFW.GLFW_KEY_ESCAPE) {
 			menu = null;
+			return true;
+		}
+		if (fieldMode != Field.NONE && topField != null) {
+			if (key.key() == GLFW.GLFW_KEY_ESCAPE) {
+				closeField();
+				return true;
+			}
+			if (key.key() == GLFW.GLFW_KEY_ENTER || key.key() == GLFW.GLFW_KEY_KP_ENTER) {
+				submitField();
+				return true;
+			}
+			return super.keyPressed(key);
+		}
+		if (ruler != null && key.key() == GLFW.GLFW_KEY_ESCAPE) {
+			ruler = null;
+			return true;
+		}
+		if (!createMode && key.key() == GLFW.GLFW_KEY_G && (key.modifiers() & GLFW.GLFW_MOD_CONTROL) == 0) {
+			openField(Field.GOTO, "");
 			return true;
 		}
 		// The map key closes the map again, unless you're typing a name.

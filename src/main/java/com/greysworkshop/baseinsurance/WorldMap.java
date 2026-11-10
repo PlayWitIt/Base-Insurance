@@ -33,7 +33,10 @@ import java.util.concurrent.Executors;
 /**
  * A top-down map of everything you've explored, drawn from chunks as they load, in vanilla map colours with
  * hill shading. Stored per server and dimension as 512×512-block PNG tiles that only ever grow, plus a
- * quarter-size copy of each for drawing the map zoomed out.
+ * quarter-size copy of each for drawing the map zoomed out, plus "far" levels for zooming out to the whole world:
+ * level 2 is one 128-pixel picture per 8×8 tiles, level 3 per 64×64, level 4 per 512×512. The far levels are built in
+ * the background as soon as you join (and kept on disk), and are small enough to all stay in memory, so the map shows
+ * everything at once when it opens and the detail fills in on top.
  */
 public final class WorldMap {
 	public static final int TILE = 512;
@@ -49,14 +52,29 @@ public final class WorldMap {
 	/** Tiles loaded in the background taken in per frame (each makes a texture). */
 	private static final int ACCEPT_PER_FRAME = 16;
 	/** Background loads waiting at once; the nearest tiles are asked for first, so they come first. */
-	private static final int MAX_PENDING = 48;
+	private static final int MAX_PENDING = 96;
 	/** Reads and shrinks tiles off the render thread, so a big map never stutters. */
-	private static final ExecutorService LOADER = Executors.newSingleThreadExecutor(runnable -> {
+	private static final ExecutorService LOADER = Executors.newFixedThreadPool(3, runnable -> {
 		Thread thread = new Thread(runnable, "Base Insurance map loader");
+		thread.setDaemon(true);
+		thread.setPriority(Thread.NORM_PRIORITY - 1);
+		return thread;
+	});
+	/** Builds the far levels, one job at a time, apart from the loads so it never holds them up. */
+	private static final ExecutorService BUILDER = Executors.newSingleThreadExecutor(runnable -> {
+		Thread thread = new Thread(runnable, "Base Insurance map builder");
 		thread.setDaemon(true);
 		thread.setPriority(Thread.MIN_PRIORITY);
 		return thread;
 	});
+	/** The coarsest far level. Level 2 tiles cover 8×8 tiles; each level up covers 8×8 of the one below. */
+	public static final int TOP_LEVEL = 4;
+	/** How many tiles of the level below one far tile covers, each way. */
+	public static final int FAR_SPAN = 8;
+	/** Each child's share of a far tile, in pixels. */
+	private static final int FAR_CHILD = SMALL / FAR_SPAN;
+	/** Far tiles taken in per frame. */
+	private static final int FAR_ACCEPT_PER_FRAME = 48;
 	/** Tiles drawn in the last this-many ms are never unloaded. */
 	private static final long IN_USE_NANOS = 1_000_000_000L;
 	/** An overview tile is redrawn from its full tile at most this often while you explore. */
@@ -74,6 +92,38 @@ public final class WorldMap {
 		/** Columns where the server's surface height was wrong, so the map found the surface itself. */
 		public int heightFixed;
 		public int sweptIn;
+	}
+
+	/** A picture of a big square of the world, for drawing it zoomed far out. */
+	public static final class Far {
+		final int level, fx, fz;
+		final NativeImage image;
+		NativeImageBackedTexture texture;
+		Identifier id;
+		/** Blocks with something drawn, roughly (each pixel stands for this level's square of blocks). */
+		final long explored;
+
+		Far(int level, int fx, int fz, NativeImage image) {
+			this.level = level;
+			this.fx = fx;
+			this.fz = fz;
+			this.image = image;
+			long opaque = 0;
+			for (int z = 0; z < SMALL; z++) for (int x = 0; x < SMALL; x++) if ((image.getColorArgb(x, z) >>> 24) != 0) opaque++;
+			long side = blocksPerPixel(level);
+			this.explored = opaque * side * side;
+		}
+	}
+
+	/** Blocks across one far tile at this level (level 1 is a tile: 512). */
+	public static long farBlocks(int level) {
+		long b = TILE;
+		for (int i = 1; i < level; i++) b *= FAR_SPAN;
+		return b;
+	}
+
+	static long blocksPerPixel(int level) {
+		return farBlocks(level) / SMALL;
 	}
 
 	public static final class Tile {
@@ -139,8 +189,20 @@ public final class WorldMap {
 	private final Set<Long> pendingFull = new HashSet<>();
 	private final Set<Long> pendingSmall = new HashSet<>();
 	private final ConcurrentLinkedQueue<Loaded> finished = new ConcurrentLinkedQueue<>();
+	/** Far tiles in memory, by level (2 to TOP_LEVEL). */
+	@SuppressWarnings("unchecked")
+	private final Map<Long, Far>[] far = new Map[TOP_LEVEL + 1];
+	{
+		for (int i = 2; i <= TOP_LEVEL; i++) far[i] = new HashMap<>();
+	}
+	private record FarLoaded(int level, long key, NativeImage image, int generation) {}
+	private final ConcurrentLinkedQueue<FarLoaded> farFinished = new ConcurrentLinkedQueue<>();
+	/** Tiles whose overview was saved since the far levels were last brought up to date. */
+	private final Set<Long> farDirty = new HashSet<>();
+	/** Far-level jobs still running, so the map can say it's still putting the big picture together. */
+	private final java.util.concurrent.atomic.AtomicInteger farJobs = new java.util.concurrent.atomic.AtomicInteger();
 	/** Goes up whenever the map is closed, so loads still running for the old world are thrown away. */
-	private int generation;
+	private volatile int generation;
 	private int tick;
 	private int loadsLeft = LOADS_PER_FRAME;
 	private long frameNanos;
@@ -159,6 +221,48 @@ public final class WorldMap {
 
 	public int loadedSmallTiles() {
 		return smalls.size();
+	}
+
+	/** Tiles and far tiles still being read or built: the map is still filling in. */
+	public int stillLoading() {
+		return pendingFull.size() + pendingSmall.size() + finished.size() + farFinished.size() + farJobs.get();
+	}
+
+	/** A far tile for drawing, or null if it isn't built yet (or nothing's been explored there). */
+	public Far drawableFar(int level, int fx, int fz) {
+		return far[level].get(ChunkPos.toLong(fx, fz));
+	}
+
+	/** Roughly how many blocks of this dimension have been mapped, from the far level 2 pictures. */
+	public long exploredBlocks() {
+		long n = 0;
+		for (Far f : far[2].values()) n += f.explored;
+		return n;
+	}
+
+	/** The square around everything explored here, in blocks {minX, minZ, maxX, maxZ}; null if nothing is. */
+	public int[] exploredBounds() {
+		if (worldKey == null) return null;
+		Set<Long> keys = new HashSet<>(onDisk());
+		keys.addAll(tiles.keySet());
+		if (keys.isEmpty()) return null;
+		int minX = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+		for (long k : keys) {
+			int rx = ChunkPos.getPackedX(k), rz = ChunkPos.getPackedZ(k);
+			minX = Math.min(minX, rx);
+			minZ = Math.min(minZ, rz);
+			maxX = Math.max(maxX, rx);
+			maxZ = Math.max(maxZ, rz);
+		}
+		return new int[] {minX * TILE, minZ * TILE, (maxX + 1) * TILE, (maxZ + 1) * TILE};
+	}
+
+	/** How many tiles of this dimension exist (on disk or being drawn). */
+	public int tileCount() {
+		if (worldKey == null) return 0;
+		Set<Long> keys = new HashSet<>(onDisk());
+		keys.addAll(tiles.keySet());
+		return keys.size();
 	}
 
 	public boolean hasSmall(int rx, int rz) {
@@ -195,6 +299,11 @@ public final class WorldMap {
 			ChunkPos center = client.player.getChunkPos();
 			for (int dx = -view; dx <= view; dx++) {
 				for (int dz = -view; dz <= view; dz++) onChunkLoad(new ChunkPos(center.x + dx, center.z + dz));
+			}
+			// Put the big picture together now, in the background, so the map is ready the moment it's opened.
+			if (key != null) {
+				buildFar(null, center.x << 4, center.z << 4);
+				warmUp(center.x << 4, center.z << 4);
 			}
 		}
 		if (key == null) return;
@@ -235,7 +344,184 @@ public final class WorldMap {
 			}
 		}
 		evict();
-		if (tick % SAVE_INTERVAL == 0) save();
+		if (tick % SAVE_INTERVAL == 0) {
+			save();
+			if (!farDirty.isEmpty()) {
+				Set<Long> changed = new HashSet<>(farDirty);
+				farDirty.clear();
+				buildFar(changed, client.player.getBlockX(), client.player.getBlockZ());
+			}
+		}
+	}
+
+	/** Starts reading the overview tiles around (x, z), so the map opens on them already loaded. */
+	private void warmUp(int x, int z) {
+		int crx = Math.floorDiv(x, TILE), crz = Math.floorDiv(z, TILE);
+		for (int r = 0; r <= 4; r++) {
+			for (int rx = crx - r; rx <= crx + r; rx++) {
+				for (int rz = crz - r; rz <= crz + r; rz++) {
+					if (Math.max(Math.abs(rx - crx), Math.abs(rz - crz)) != r) continue;
+					long key = ChunkPos.toLong(rx, rz);
+					if (!smalls.containsKey(key) && (smallOnDisk().contains(key) || onDisk().contains(key))) load(key, true);
+				}
+			}
+		}
+	}
+
+	// ---- Far levels ----
+
+	/**
+	 * Brings the far levels up to date in the background: every far tile when {@code changed} is null (on joining: any
+	 * that's older than what it's made from is made again, the rest are just read), else the ones over those tiles.
+	 * Nearest (x, z) first, so the part of the world you're in is ready first.
+	 */
+	private void buildFar(Set<Long> changed, int x, int z) {
+		Path folder = folder();
+		if (folder == null) return;
+		Set<Long> regions = new HashSet<>(onDisk());
+		regions.addAll(smallOnDisk());
+		int gen = generation;
+		farJobs.incrementAndGet();
+		BUILDER.execute(() -> {
+			try {
+				Set<Long> children = regions;
+				Set<Long> dirty = changed;
+				for (int level = 2; level <= TOP_LEVEL; level++) {
+					if (gen != generation) return;
+					Map<Long, List<Long>> parents = new HashMap<>();
+					for (long c : children) {
+						long parent = ChunkPos.toLong(Math.floorDiv(ChunkPos.getPackedX(c), FAR_SPAN), Math.floorDiv(ChunkPos.getPackedZ(c), FAR_SPAN));
+						parents.computeIfAbsent(parent, k -> new ArrayList<>()).add(c);
+					}
+					Set<Long> nextDirty = dirty == null ? null : new HashSet<>();
+					if (dirty != null) {
+						for (long d : dirty) nextDirty.add(ChunkPos.toLong(Math.floorDiv(ChunkPos.getPackedX(d), FAR_SPAN), Math.floorDiv(ChunkPos.getPackedZ(d), FAR_SPAN)));
+					}
+					long size = farBlocks(level);
+					List<Long> order = new ArrayList<>(parents.keySet());
+					order.sort(java.util.Comparator.comparingDouble(k -> Math.hypot((ChunkPos.getPackedX(k) + 0.5) * size - x, (ChunkPos.getPackedZ(k) + 0.5) * size - z)));
+					for (long parent : order) {
+						if (gen != generation) return;
+						boolean force = nextDirty != null && nextDirty.contains(parent);
+						if (nextDirty != null && !force) continue;
+						NativeImage image = farTile(folder, level, parent, parents.get(parent), force);
+						if (image != null) farFinished.add(new FarLoaded(level, parent, image, gen));
+					}
+					children = parents.keySet();
+					dirty = nextDirty;
+				}
+			} catch (RuntimeException e) {
+				BaseInsuranceClient.LOGGER.warn("Could not build the far map", e);
+			} finally {
+				farJobs.decrementAndGet();
+			}
+		});
+	}
+
+	private static Path farFile(Path folder, int level, int fx, int fz) {
+		return folder.resolve("far" + level).resolve("r." + fx + "." + fz + ".png");
+	}
+
+	private static long modified(Path file) {
+		try {
+			return Files.exists(file) ? Files.getLastModifiedTime(file).toMillis() : 0;
+		} catch (IOException e) {
+			return 0;
+		}
+	}
+
+	/** One far tile: read from disk if it's newer than everything it's made of, else made again and saved. On the builder. */
+	private static NativeImage farTile(Path folder, int level, long key, List<Long> children, boolean force) {
+		int fx = ChunkPos.getPackedX(key), fz = ChunkPos.getPackedZ(key);
+		Path file = farFile(folder, level, fx, fz);
+		long made = modified(file);
+		if (!force && made > 0) {
+			long newest = 0;
+			for (long c : children) {
+				int cx = ChunkPos.getPackedX(c), cz = ChunkPos.getPackedZ(c);
+				if (level == 2) {
+					newest = Math.max(newest, Math.max(modified(folder.resolve("r." + cx + "." + cz + ".png")),
+							modified(folder.resolve("overview").resolve("r." + cx + "." + cz + ".png"))));
+				} else {
+					newest = Math.max(newest, modified(farFile(folder, level - 1, cx, cz)));
+				}
+			}
+			if (made >= newest) {
+				NativeImage image = sized(read(file), SMALL);
+				if (image != null) return image;
+			}
+		}
+		NativeImage out = blankSmall();
+		boolean any = false;
+		for (long c : children) {
+			int cx = ChunkPos.getPackedX(c), cz = ChunkPos.getPackedZ(c);
+			NativeImage child;
+			if (level == 2) {
+				child = sized(read(folder.resolve("overview").resolve("r." + cx + "." + cz + ".png")), SMALL);
+				if (child == null) {
+					NativeImage full = sized(read(folder.resolve("r." + cx + "." + cz + ".png")), TILE);
+					if (full != null) {
+						child = blankSmall();
+						shrink(full, child);
+						full.close();
+					}
+				}
+			} else {
+				child = sized(read(farFile(folder, level - 1, cx, cz)), SMALL);
+			}
+			if (child == null) continue;
+			any |= shrinkInto(child, out, Math.floorMod(cx, FAR_SPAN) * FAR_CHILD, Math.floorMod(cz, FAR_SPAN) * FAR_CHILD);
+			child.close();
+		}
+		if (!any) {
+			out.close();
+			return null;
+		}
+		writeImage(file, out);
+		return out;
+	}
+
+	/** Averages a 128-pixel picture down to its 16-pixel share of a far tile; false if none of it was explored. */
+	private static boolean shrinkInto(NativeImage child, NativeImage out, int ox, int oz) {
+		int step = SMALL / FAR_CHILD;
+		boolean any = false;
+		for (int sz = 0; sz < FAR_CHILD; sz++) {
+			for (int sx = 0; sx < FAR_CHILD; sx++) {
+				int r = 0, g = 0, b = 0, n = 0;
+				for (int dz = 0; dz < step; dz++) {
+					for (int dx = 0; dx < step; dx++) {
+						int c = child.getColorArgb(sx * step + dx, sz * step + dz);
+						if ((c >>> 24) == 0) continue;
+						r += (c >> 16) & 0xFF;
+						g += (c >> 8) & 0xFF;
+						b += c & 0xFF;
+						n++;
+					}
+				}
+				// Far out, any explored block counts, so thin trails and roads stay visible from the whole-world view.
+				if (n == 0) continue;
+				out.setColorArgb(ox + sx, oz + sz, 0xFF000000 | (r / n) << 16 | (g / n) << 8 | (b / n));
+				any = true;
+			}
+		}
+		return any;
+	}
+
+	public Identifier texture(Far f) {
+		if (f.texture == null) {
+			f.texture = new NativeImageBackedTexture(() -> "baseinsurance map far " + f.level + " " + f.fx + "," + f.fz, f.image);
+			f.id = textureId("far" + f.level + "/", f.fx, f.fz);
+			MinecraftClient.getInstance().getTextureManager().registerTexture(f.id, f.texture);
+		}
+		return f.id;
+	}
+
+	private void unload(Far f) {
+		if (f.texture != null) {
+			MinecraftClient.getInstance().getTextureManager().destroyTexture(f.id);
+		} else {
+			f.image.close();
+		}
 	}
 
 	/** Draws a chunk onto the map; false if there was nothing to draw. */
@@ -381,6 +667,17 @@ public final class WorldMap {
 			Loaded loaded = finished.poll();
 			if (loaded == null) break;
 			accept(loaded);
+		}
+		for (int i = 0; i < FAR_ACCEPT_PER_FRAME; i++) {
+			FarLoaded loaded = farFinished.poll();
+			if (loaded == null) break;
+			if (loaded.generation() != generation) {
+				loaded.image().close();
+				continue;
+			}
+			Far fresh = new Far(loaded.level(), ChunkPos.getPackedX(loaded.key()), ChunkPos.getPackedZ(loaded.key()), loaded.image());
+			Far old = far[loaded.level()].put(loaded.key(), fresh);
+			if (old != null) unload(old);
 		}
 	}
 
@@ -656,7 +953,10 @@ public final class WorldMap {
 	}
 
 	private void writeSmall(int rx, int rz, NativeImage image) {
-		if (writeImage(smallFile(rx, rz), image)) smallOnDisk().add(ChunkPos.toLong(rx, rz));
+		if (writeImage(smallFile(rx, rz), image)) {
+			smallOnDisk().add(ChunkPos.toLong(rx, rz));
+			farDirty.add(ChunkPos.toLong(rx, rz));
+		}
 	}
 
 	/** Writes a PNG; safe on the loader thread. */
@@ -688,6 +988,12 @@ public final class WorldMap {
 		tiles.clear();
 		for (Small small : smalls.values()) unload(small);
 		smalls.clear();
+		for (int level = 2; level <= TOP_LEVEL; level++) {
+			for (Far f : far[level].values()) unload(f);
+			far[level].clear();
+		}
+		farDirty.clear();
+		for (FarLoaded loaded; (loaded = farFinished.poll()) != null; ) loaded.image().close();
 		smallUnsaved.clear();
 		generation++;
 		pendingFull.clear();

@@ -158,7 +158,7 @@ public final class Commands {
 				{"/bi create <name> <radius> [down] [up]", "protect the area around you right away"},
 				{"/bi map", "your explored world, bases and damage (or press M)"},
 				{"/bi map status", "what the map is doing, if it looks blank"},
-				{"/bi minimap", "show/hide the minimap (zoom it with - and =)"},
+				{"/bi minimap", "show/hide the minimap (or press I; zoom it with - and =)"},
 				{"/bi guide", "how to get started"},
 				{"/bi report [name]", "open the damage report"},
 				{"/bi overlay", "show/hide changed blocks in the world"},
