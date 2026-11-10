@@ -553,6 +553,10 @@ public final class SelfTest {
 			// ---- The minimap, from the map (M): on/off and size remembered, smaller by default ----
 			case 2246 -> {
 				client.setScreen(null);
+				check("the minimap has a show/hide key, even for someone whose saved settings had none", BaseInsuranceClient.INSTANCE.minimapKeyBound());
+				BIConfig.INSTANCE.minimap = true;
+				BaseInsuranceClient.toggleMinimap(client);
+				check("the show/hide key turns the minimap off, and that's saved", !BIConfig.INSTANCE.minimap && !BIConfig.read().minimap);
 				BIConfig.INSTANCE.minimap = true;
 				client.setScreen(new MapScreen());
 			}

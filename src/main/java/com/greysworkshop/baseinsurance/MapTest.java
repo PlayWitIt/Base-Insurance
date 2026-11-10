@@ -178,20 +178,44 @@ public final class MapTest {
 						for (int rz = -FAKE_Z; rz <= FAKE_Z; rz++) {
 							if ((rx + 1) * WorldMap.TILE < x0 || rx * WorldMap.TILE > x1 || (rz + 1) * WorldMap.TILE < z0 || rz * WorldMap.TILE > z1) continue;
 							inView++;
-							if (map.hasSmall(rx, rz)) shown++;
+							int level = MapRender.levelFor(zoom);
+							if (level < 2 ? map.hasSmall(rx, rz) : map.drawableFar(level, Math.floorDiv(rx, (int) (WorldMap.farBlocks(level) / WorldMap.TILE)),
+									Math.floorDiv(rz, (int) (WorldMap.farBlocks(level) / WorldMap.TILE))) != null) shown++;
 						}
 					}
 				}
 				check("a big old map fills in when zoomed right out (" + shown + " of " + inView + " tiles in view)", inView > 50 && shown == inView);
 				check("...without stutter (slowest frame " + slowestFrame / 1_000_000 + " ms)", slowestFrame < 50_000_000L);
+				check("...from the far levels, zoomed out to 1/" + Math.round(1 / MapScreen.testZoom()) + " (level " + MapRender.levelFor(MapScreen.testZoom()) + ")",
+						MapRender.levelFor(MapScreen.testZoom()) >= 2);
 				screenshot(client, "map_8_big_map");
 			}
-			case 335 -> {
+			case 331 -> {
+				if (client.currentScreen instanceof MapScreen screen) {
+					screen.showAll();
+					int[] all = map.exploredBounds();
+					double zoom = MapScreen.testZoom();
+					double halfW = screen.width / 2.0 / zoom, halfH = screen.height / 2.0 / zoom;
+					check("Show all fits everything explored on screen", all != null && MapScreen.testCenterX() - halfW <= all[0] && MapScreen.testCenterX() + halfW >= all[2]
+							&& MapScreen.testCenterZ() - halfH <= all[1] && MapScreen.testCenterZ() + halfH >= all[3]);
+				}
+				int[] c1 = MapScreen.parseCoords("1200 -350"), c2 = MapScreen.parseCoords("x 10, y 64, z -20"), c3 = MapScreen.parseCoords("home");
+				check("Go to reads coordinates", c1 != null && c1[0] == 1200 && c1[1] == -350 && c2 != null && c2[0] == 10 && c2[1] == -20 && c3 == null);
+				int before = MapPins.count();
+				MapPins.Pin pin = MapPins.add("Test pin", 5, 5, BaseManager.dimensionKey(client.world));
+				boolean added = MapPins.count() == before + 1 && MapPins.in(BaseManager.dimensionKey(client.world)).contains(pin);
+				MapPins.remove(pin);
+				check("pins can be added and removed", added && MapPins.count() == before);
+				check("the ruler gives a way and a time", MapScreen.compass(0, -100).equals("N") && MapScreen.compass(100, 0).equals("E")
+						&& MapScreen.duration(90).equals("1m 30s"));
+			}
+			case 350 -> screenshot(client, "map_9_show_all");
+			case 355 -> {
 				client.setScreen(null);
 				map.save();
 				check("overview tiles are saved for next time", countOverviewFiles() >= 4);
 			}
-			case 360 -> {
+			case 380 -> {
 				log("Results: " + passed + " passed, " + failed + " failed");
 				client.scheduleStop();
 			}

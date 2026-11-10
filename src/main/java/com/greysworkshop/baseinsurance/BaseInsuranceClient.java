@@ -71,7 +71,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		overlayKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.overlay", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		buildKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.build", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
 		mapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.map", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_M, category));
-		minimapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category));
+		minimapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_I, category));
 		zoomInKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap_in", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_EQUAL, category));
 		zoomOutKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.baseinsurance.minimap_out", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_MINUS, category));
 
@@ -188,6 +188,28 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		if (client.world != null && client.currentScreen == null) client.setScreen(new MapScreen());
 	}
 
+	/** Whether the minimap's show/hide key is set; for the self-test. */
+	boolean minimapKeyBound() {
+		return !minimapKey.isUnbound();
+	}
+
+	/**
+	 * Show/hide minimap used to have no key, and the game saved that, so a new default never reaches anyone who has played
+	 * before. Once, give them I, unless another key (F3 combinations aside) already uses it.
+	 */
+	private void giveMinimapKey(MinecraftClient client) {
+		BIConfig.INSTANCE.minimapKeyGiven = true;
+		BIConfig.save();
+		if (!minimapKey.isUnbound()) return;
+		InputUtil.Key key = InputUtil.Type.KEYSYM.createFromCode(GLFW.GLFW_KEY_I);
+		for (KeyBinding other : client.options.allKeys) {
+			if (!other.getId().startsWith("key.debug.") && other.getBoundKeyTranslationKey().equals(key.getTranslationKey())) return;
+		}
+		minimapKey.setBoundKey(key);
+		KeyBinding.updateKeysByCode();
+		client.options.write();
+	}
+
 	public static void toggleMinimap(MinecraftClient client) {
 		BIConfig.INSTANCE.minimap = !BIConfig.INSTANCE.minimap;
 		BIConfig.save();
@@ -258,6 +280,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 			if (client.player != null) client.player.sendMessage(Text.literal("Damage overlay " + (Overlay.enabled ? "ON" : "OFF")), true);
 		}
 		while (mapKey.wasPressed()) openMap(client);
+		if (!BIConfig.INSTANCE.minimapKeyGiven) giveMinimapKey(client);
 		while (minimapKey.wasPressed()) toggleMinimap(client);
 		while (zoomInKey.wasPressed()) zoomMinimap(client, 1);
 		while (zoomOutKey.wasPressed()) zoomMinimap(client, -1);
@@ -282,6 +305,7 @@ public class BaseInsuranceClient implements ClientModInitializer {
 		watcher.tick(client);
 		DamageLocator.tick(client);
 		worldMap.tick(client);
+		MapPins.tick(client);
 		if (++saveTimer >= SAVE_INTERVAL) {
 			saveTimer = 0;
 			manager.saveAll(true);

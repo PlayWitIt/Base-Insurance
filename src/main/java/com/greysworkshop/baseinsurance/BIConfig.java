@@ -115,6 +115,8 @@ public final class BIConfig {
 	public boolean minimap = true;
 	/** Minimap width and height, in GUI pixels. Changed on the map (M) or in the settings. */
 	public int minimapSize = 80;
+	/** Show/hide minimap, which used to have no key, has been given one, once. */
+	public boolean minimapKeyGiven = false;
 	/** The old default size (112) has been moved to the smaller one, once. */
 	public boolean minimapSmaller;
 	/** Minimap screen pixels per block. */
@@ -194,7 +196,7 @@ public final class BIConfig {
 				if (loaded.hudCorner == null) loaded.hudCorner = Corner.TOP_LEFT;
 				if (loaded.minimapCorner == null) loaded.minimapCorner = Corner.TOP_RIGHT;
 				if (!(loaded.minimapZoom >= Minimap.MIN_ZOOM && loaded.minimapZoom <= Minimap.MAX_ZOOM)) loaded.minimapZoom = 1;
-				if (!(loaded.mapZoom >= 1 / 32.0 && loaded.mapZoom <= 16)) loaded.mapZoom = 2;
+				if (!(loaded.mapZoom >= MapScreen.MIN_ZOOM && loaded.mapZoom <= 16)) loaded.mapZoom = 2;
 				if (!loaded.minimapSmaller) {
 					// 1.17.1: the minimap is smaller by default (112 → 80). A size you picked yourself is kept.
 					if (loaded.minimapSize == 112) loaded.minimapSize = 80;
