@@ -56,7 +56,8 @@ while real griefing (in view or behind a wall) still is.
 Everything you explore is drawn into a map as chunks load, in vanilla map colours with hill shading, and saved per
 server and dimension, so it keeps growing every time you play.
 - **Minimap** in the top-right corner while you play: your bases (green intact, red damaged), nearby players and your
-  coordinates. Zoom it with **-** and **=**, show or hide it with **I**, the Minimap button on the full map, or `/bi minimap`. It can turn with you, change corner and size
+  coordinates, which always stay on screen however far out you are. In freecam it follows the camera: the camera's
+  coordinates in blue, yours below in yellow, and a yellow arrow where you really are. Zoom it with **-** and **=**, show or hide it with **I**, the Minimap button on the full map, or `/bi minimap`. It can turn with you, change corner and size
   in Settings → Map, and moves down out of the way of potion effect icons.
 - **M** opens the full map, and M or Esc closes it. It opens at once, however big your world is: a coarse picture of
   everything shows straight away and the detail sharpens on top. The big picture is built in the background as soon as
