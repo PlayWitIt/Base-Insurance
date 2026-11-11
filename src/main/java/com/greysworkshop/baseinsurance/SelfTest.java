@@ -617,7 +617,55 @@ public final class SelfTest {
 					check("the minimap size moves to the smaller default (" + e + ")", false);
 				}
 			}
+			// ---- Coordinates under the minimap: always on screen, and the camera's in freecam ----
 			case 2260 -> {
+				client.setScreen(null);
+				int sw = client.getWindow().getScaledWidth();
+				int wide = client.textRenderer.getWidth("-29999984, 320, -29999984");
+				int[] spot = Minimap.spot(sw);
+				int lx = Minimap.clampLine(spot[0] + spot[2] / 2 - wide / 2, wide, sw);
+				check("far-out coordinates under the minimap stay on screen (" + lx + " to " + (lx + wide) + " of " + sw + ")", lx >= 4 && lx + wide + 3 <= sw - 4);
+				String[] shown = Minimap.lastCoords;
+				int[] span = Minimap.lastCoordsSpan;
+				check("the minimap shows your coordinates, inside the screen (" + (shown == null ? "none" : String.join(" / ", shown)) + ", " + span[0] + " to " + span[1] + ")",
+						shown != null && shown.length == 1 && shown[0].equals(client.player.getBlockX() + ", " + client.player.getBlockY() + ", " + client.player.getBlockZ())
+								&& span[0] >= 0 && span[1] <= sw);
+				IntegratedServer server = client.getServer();
+				BlockPos p = client.player.getBlockPos();
+				String cmd = "summon armor_stand " + (p.getX() + 30) + " " + p.getY() + " " + (p.getZ() + 20) + " {Tags:[\"bicam\"],NoGravity:1b,Invisible:1b}";
+				server.execute(() -> server.getCommandManager().parseAndExecute(server.getCommandSource(), cmd));
+			}
+			case 2264 -> {
+				net.minecraft.entity.Entity stand = null;
+				for (net.minecraft.entity.Entity e : client.world.getEntities()) if (e instanceof net.minecraft.entity.decoration.ArmorStandEntity) stand = e;
+				if (stand == null) {
+					check("an armor stand to move the camera to", false);
+					break;
+				}
+				// Freecam: the camera leaves you (as watching another entity does).
+				client.setCameraEntity(stand);
+				framesAt = Minimap.frames();
+			}
+			case 2265 -> {
+				if (waitForFrames()) return;
+				String[] shown = Minimap.lastCoords;
+				var cam = client.gameRenderer.getCamera().getCameraPos();
+				String camLine = "Cam " + (int) Math.floor(cam.x) + ", " + (int) Math.floor(cam.y) + ", " + (int) Math.floor(cam.z);
+				String youLine = "You " + client.player.getBlockX() + ", " + client.player.getBlockY() + ", " + client.player.getBlockZ();
+				check("in freecam the minimap shows the camera's coordinates, then yours (" + (shown == null ? "none" : String.join(" / ", shown)) + ", expected " + camLine + " / " + youLine + ")",
+						shown != null && shown.length == 2 && shown[0].equals(camLine) && shown[1].equals(youLine));
+				screenshot(client, "18_minimap_freecam");
+				client.setCameraEntity(client.player);
+				IntegratedServer server = client.getServer();
+				server.execute(() -> server.getCommandManager().parseAndExecute(server.getCommandSource(), "kill @e[tag=bicam]"));
+				framesAt = Minimap.frames();
+			}
+			case 2268 -> {
+				if (waitForFrames()) return;
+				String[] shown = Minimap.lastCoords;
+				check("back out of freecam it shows only yours again", shown != null && shown.length == 1 && !shown[0].startsWith("Cam"));
+			}
+			case 2270 -> {
 				client.setScreen(null);
 				Base base = mod.manager.get("Test");
 				log("Final: " + base.changes.size() + " changes; events:");

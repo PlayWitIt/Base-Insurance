@@ -3,6 +3,7 @@ package com.greysworkshop.baseinsurance;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.player.PlayerEntity;
@@ -68,10 +69,15 @@ public final class Minimap {
 		int y0 = MARGIN + (right ? effectRows(client) * 26 : 0);
 		int x1 = x0 + size, y1 = y0 + size;
 		float delta = tickCounter.getTickProgress(true);
-		Vec3d me = client.player.getLerpedPos(delta);
+		Vec3d you = client.player.getLerpedPos(delta);
+		Camera camera = client.gameRenderer.getCamera();
+		// In freecam the map follows the camera, so it shows what you're looking at; you get a marker where you really are.
+		boolean freecam = detached(client, camera, delta);
+		Vec3d me = freecam ? camera.getCameraPos() : you;
 		double zoom = config.minimapZoom;
 		boolean rotate = config.minimapRotate;
-		float yaw = client.player.getYaw(delta);
+		float playerYaw = client.player.getYaw(delta);
+		float yaw = freecam ? camera.getYaw() : playerYaw;
 		// Rotating: turn the world so the way you face is up.
 		float turn = rotate ? (float) Math.toRadians(-(yaw + 180)) : 0;
 
@@ -106,6 +112,21 @@ public final class Minimap {
 				context.fill(px - 1, pz - 1, px + 1, pz + 1, dot);
 			}
 		}
+		if (freecam) {
+			// Where you really are, as a hollow arrow, pinned to the edge when it's off the map.
+			double px = (you.x - me.x) * zoom, pz = (you.z - me.z) * zoom, lim = reach - 4;
+			double over = Math.max(Math.abs(px), Math.abs(pz)) / lim;
+			if (over > 1 && !rotate) {
+				px /= over;
+				pz /= over;
+			}
+			TextRenderer f = client.textRenderer;
+			matrices.pushMatrix();
+			matrices.translate((float) px, (float) pz);
+			matrices.rotate((float) Math.toRadians(playerYaw + 180));
+			context.drawText(f, "△", -f.getWidth("△") / 2, -4, 0xFFFFD050, true);
+			matrices.popMatrix();
+		}
 		matrices.popMatrix();
 
 		// You, in the middle: pointing the way you face (always up when the map turns instead).
@@ -113,7 +134,7 @@ public final class Minimap {
 		matrices.pushMatrix();
 		matrices.translate(x0 + size / 2f, y0 + size / 2f);
 		if (!rotate) matrices.rotate((float) Math.toRadians(yaw + 180));
-		context.drawText(font, "▲", -font.getWidth("▲") / 2, -4, 0xFFFFFFFF, true);
+		context.drawText(font, "▲", -font.getWidth("▲") / 2, -4, freecam ? 0xFF7FD8FF : 0xFFFFFFFF, true);
 		matrices.popMatrix();
 		context.disableScissor();
 
@@ -127,15 +148,57 @@ public final class Minimap {
 		context.drawTextWithShadow(font, "N", lx - font.getWidth("N") / 2 + 1, ly - 4, 0xFFFF5050);
 
 		bottom = y1 + 2;
+		lastCoords = null;
 		if (config.minimapCoords) {
-			var block = client.player.getBlockPos();
-			String coords = String.format(Locale.ROOT, "%d, %d, %d", block.getX(), block.getY(), block.getZ());
-			int w = font.getWidth(coords);
-			int cx = x0 + size / 2 - w / 2;
-			context.fill(cx - 3, y1 + 3, cx + w + 3, y1 + 14, 0xA0000000);
-			context.drawTextWithShadow(font, coords, cx, y1 + 5, 0xFFE0E0E0);
-			bottom = y1 + 14;
+			int screen = context.getScaledWindowWidth();
+			int y = y1 + 3;
+			if (freecam) {
+				lastCoords = new String[] {"Cam " + coords(me), "You " + coords(you)};
+				y = coordsLine(context, font, lastCoords[0], x0, size, screen, y, 0xFF7FD8FF);
+				y = coordsLine(context, font, lastCoords[1], x0, size, screen, y, 0xFFFFD050);
+			} else {
+				lastCoords = new String[] {coords(you)};
+				y = coordsLine(context, font, lastCoords[0], x0, size, screen, y, 0xFFE0E0E0);
+			}
+			bottom = y;
 		}
+	}
+
+	/** What the coordinates under the map said last frame (camera then you in freecam), for the self-test; null when off. */
+	static volatile String[] lastCoords;
+	/** Where the last coordinates line was drawn: {left, right} in GUI pixels, for the self-test. */
+	static volatile int[] lastCoordsSpan = {0, 0};
+
+	private static String coords(Vec3d p) {
+		return String.format(Locale.ROOT, "%d, %d, %d", (int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
+	}
+
+	/**
+	 * One line of coordinates under the map, centred on it but kept inside the screen: far-out numbers wider than the map
+	 * grow in from the screen edge instead of running off it. Returns the y below it.
+	 */
+	private static int coordsLine(DrawContext context, TextRenderer font, String text, int x0, int size, int screen, int y, int color) {
+		int w = font.getWidth(text);
+		int cx = clampLine(x0 + size / 2 - w / 2, w, screen);
+		context.fill(cx - 3, y, cx + w + 3, y + 11, 0xA0000000);
+		context.drawTextWithShadow(font, text, cx, y + 2, color);
+		lastCoordsSpan = new int[] {cx - 3, cx + w + 3};
+		return y + 11;
+	}
+
+	/** The left edge of a line {@code w} wide, moved in so its backing stays MARGIN clear of both screen edges. */
+	static int clampLine(int left, int w, int screen) {
+		return Math.max(MARGIN + 3, Math.min(left, screen - MARGIN - 3 - w));
+	}
+
+	/**
+	 * Whether the camera has left you: freecam (Meteor and the like move the camera on its own), or watching another
+	 * entity. Third person's camera sits up to a few blocks behind you, so only further than that counts there.
+	 */
+	static boolean detached(MinecraftClient client, Camera camera, float delta) {
+		if (camera.getFocusedEntity() != null && camera.getFocusedEntity() != client.player) return true;
+		double off = camera.getCameraPos().distanceTo(client.player.getCameraPosVec(delta));
+		return client.options.getPerspective().isFirstPerson() ? off > 0.75 : off > 8.5;
 	}
 
 	/** How many rows of status-effect icons vanilla draws in the top-right corner (0–2). */
