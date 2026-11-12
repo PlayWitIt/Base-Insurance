@@ -136,6 +136,8 @@ public final class BaseManager {
 		if (!Files.isDirectory(dir)) return;
 		try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.json")) {
 			for (Path file : files) {
+				// The map's pins live beside the bases; they aren't a base.
+				if (file.getFileName().toString().equals("pins.json")) continue;
 				try (Reader reader = Files.newBufferedReader(file)) {
 					Base base = GSON.fromJson(reader, Base.class);
 					if (base == null || base.name == null) continue;
