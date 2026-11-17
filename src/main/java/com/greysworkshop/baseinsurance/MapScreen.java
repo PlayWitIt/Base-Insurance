@@ -743,6 +743,7 @@ public class MapScreen extends Screen {
 		context.enableScissor(0, 0, right, height);
 		MapRender.drawTerrain(context, mapCenterX(), mapCenterY(), centerX, centerZ, zoom, right / 2.0, height / 2.0);
 		drawGrid(context, right);
+		if (!createMode) drawGroundskeeper(context, right);
 		for (Base base : bases()) {
 			if (base != editing) drawBase(context, base);
 		}
@@ -803,8 +804,32 @@ public class MapScreen extends Screen {
 						? Text.translatable("baseinsurance.map.tip_intact", base.name)
 						: Text.translatable("baseinsurance.map.tip_damage", base.name, Alerts.plural(base.damageCount(), "change"));
 				context.drawTooltip(textRenderer, tip, mouseX, mouseY);
+			} else {
+				GroundskeeperArea.Tile tile = groundskeeperTileAt(mouseX, mouseY);
+				if (tile != null) context.drawTooltip(textRenderer, Text.literal("Groundskeeper tile " + tile.tx() + "," + tile.tz() + ": " + GroundskeeperArea.describe(tile))
+						.withColor(0xFFC49BE8), mouseX, mouseY);
 			}
 		}
+	}
+
+	/** Groundskeeper's big area, faintly: its tiles coloured by how far each has got (mycelium purple when done). */
+	private void drawGroundskeeper(DrawContext context, int right) {
+		GroundskeeperArea.Area a = GroundskeeperArea.get(client);
+		if (a == null) return;
+		int span = a.span();
+		for (GroundskeeperArea.Tile t : a.tiles()) {
+			int x0 = (int) screenX((long) t.tx() * span), x1 = (int) screenX((long) (t.tx() + 1) * span);
+			int y0 = (int) screenY((long) t.tz() * span), y1 = (int) screenY((long) (t.tz() + 1) * span);
+			if (x1 < 0 || x0 > right || y1 < 0 || y0 > height) continue;
+			context.fill(x0, y0, Math.max(x0 + 1, x1), Math.max(y0 + 1, y1), GroundskeeperArea.fill(t.state()));
+			if (x1 - x0 >= 8) context.drawStrokedRectangle(x0, y0, x1 - x0, y1 - y0, GroundskeeperArea.outline(t.state()));
+		}
+	}
+
+	/** The Groundskeeper tile under the mouse, or null. */
+	private GroundskeeperArea.Tile groundskeeperTileAt(double mx, double my) {
+		GroundskeeperArea.Area a = GroundskeeperArea.get(client);
+		return a == null ? null : a.at((int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my)));
 	}
 
 	/** Chunk lines when zoomed in far enough to be useful. */

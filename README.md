@@ -86,6 +86,12 @@ server and dimension, so it keeps growing every time you play.
   older version saved under another spelling is moved into place, so your bases and map follow you.
 - **Map blank?** `/bi map status` shows what the map is doing: whether it's recording, how many chunks it has drawn,
   and a link to the folder its tiles are saved in.
+- **Groundskeeper areas:** with Groundskeeper, `/gk area map` (or its panel button) opens this map for drawing a big
+  area of any shape: **Rect** (drag corner to corner), **Circle** (drag out from the middle; Shift for an ellipse),
+  **Shape** (click each corner, click the first to finish) and **Brush** (drag to paint; **[** and **]** change its
+  size), each **Add**ing to the area or **Cut**ting out of it (your base, a farm). Undo, Clear, Cancel and Done; the
+  size shows as you draw, and it's exactly the ground Groundskeeper works. Its tiles show on the map as it goes:
+  purple when done, paler while spreading (hover one for how far it's got).
 - Big maps stay smooth: tiles load on a background thread, and zoomed out it draws from quarter-size overview tiles
   (made automatically for maps recorded by older versions).
 ## Friends

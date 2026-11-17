@@ -42,6 +42,8 @@ public final class MapTest {
 	private static boolean measuring;
 	/** Acts like a server that sends empty surface heights (some do, through ViaVersion), for the second half of the trip. */
 	private static boolean breakHeights;
+	/** What the area picker handed back. */
+	private static String pickerResult;
 
 	private MapTest() {}
 
@@ -215,7 +217,90 @@ public final class MapTest {
 				map.save();
 				check("overview tiles are saved for next time", countOverviewFiles() >= 4);
 			}
-			case 380 -> {
+			case 360 -> {
+				// Groundskeeper's area file for this world, with three tiles at different stages.
+				try {
+					Path f = GroundskeeperArea.file(client);
+					Files.createDirectories(f.getParent());
+					Files.writeString(f, "{\"tileChunks\":2,\"shapes\":[{\"op\":\"add\",\"type\":\"rect\",\"x1\":0,\"z1\":0,\"x2\":31,\"z2\":31}],"
+							+ "\"tiles\":{\"0,0\":{\"state\":\"DONE\",\"coverage\":100},\"1,0\":{\"state\":\"WORKED\",\"coverage\":64},\"0,1\":{\"state\":\"QUEUED\"}}}");
+				} catch (IOException e) {
+					log("Couldn't write the Groundskeeper file: " + e);
+				}
+				GroundskeeperArea.refresh();
+				GroundskeeperArea.Area a = GroundskeeperArea.get(client);
+				check("reads Groundskeeper's tiles (" + (a == null ? "none" : a.tiles().size() + " tiles of " + a.span()) + ")", a != null && a.tiles().size() == 3 && a.span() == 32
+						&& a.at(40, 5) != null && a.at(40, 5).state() == GroundskeeperArea.State.WORKED && a.at(40, 5).coverage() == 64 && a.shapes().size() == 1);
+				// Opened just as Groundskeeper opens it: by reflection, with the shapes it has.
+				try {
+					java.util.function.Consumer<String> done = json -> pickerResult = json == null ? "CANCELLED" : json;
+					Class.forName("com.greysworkshop.baseinsurance.AreaPicker").getMethod("open", String.class, String.class, java.util.function.Consumer.class)
+							.invoke(null, "Groundskeeper area", "{\"version\":1,\"shapes\":[{\"op\":\"add\",\"type\":\"rect\",\"x1\":0,\"z1\":0,\"x2\":31,\"z2\":31}]}", done);
+				} catch (ReflectiveOperationException e) {
+					check("the area picker opens by reflection: " + e, false);
+				}
+			}
+			case 365 -> {
+				if (!(client.currentScreen instanceof AreaPicker picker)) {
+					check("the area picker opened", false);
+					break;
+				}
+				check("the area picker opened with the area's shape", picker.shapes.size() == 1);
+				picker.testView(40, 16, 3);
+				picker.pick(AreaPicker.Tool.RECT);
+				picker.testDrag(40, 0, 79, 31);
+				picker.pick(AreaPicker.Tool.CIRCLE);
+				picker.setCutting(true);
+				picker.testDrag(60, 16, 65, 16);
+				picker.setCutting(false);
+				// A triangle: three corners, then the first again.
+				picker.pick(AreaPicker.Tool.POLYGON);
+				picker.polygonClick(picker.screenX(0.5), picker.screenY(40.5), 0, 40, false);
+				picker.polygonClick(picker.screenX(20.5), picker.screenY(40.5), 20, 40, false);
+				picker.polygonClick(picker.screenX(0.5), picker.screenY(60.5), 0, 60, false);
+				picker.polygonClick(picker.screenX(0.5), picker.screenY(40.5), 0, 40, false);
+				picker.pick(AreaPicker.Tool.BRUSH);
+				picker.brush = 3;
+				picker.testDrag(90, 0, 90, 20);
+				int before = picker.shapes.size();
+				picker.undo();
+				long expect = 0;
+				for (int x = -10; x <= 100; x++) for (int z = -10; z <= 70; z++) {
+					boolean in = (x >= 0 && x <= 31 || x >= 40 && x <= 79) && z >= 0 && z <= 31;
+					if ((x - 60) * (x - 60) + (z - 16) * (z - 16) <= 5 * 5 + 5) in = false;
+					// The triangle (0,40) (20,40) (0,60), on column centres.
+					double cx = x + 0.5, cz = z + 0.5;
+					if (cz >= 40.5 && cz < 60.5 && cx >= 0.5 && cx <= 20.5 - (cz - 40.5) + 1e-9) in = true;
+					if (in) expect++;
+				}
+				check("draws rect, circle cut-out, polygon and brush; undo takes the brush off (" + before + " shapes, then " + picker.shapes.size() + ")",
+						before == 5 && picker.shapes.size() == 4 && picker.shapes.get(2).cut());
+				check("area size matches the shapes exactly (" + picker.columns() + " vs " + expect + ")", picker.columns() == expect);
+			}
+			case 370 -> screenshot(client, "map_10_area_picker");
+			case 375 -> {
+				if (client.currentScreen instanceof AreaPicker picker) picker.finish(true);
+				java.util.List<AreaShapes.Shape> back = pickerResult == null ? java.util.List.of() : AreaShapes.fromJson(pickerResult);
+				check("Done hands the shapes back (" + back.size() + ")", client.currentScreen == null && back.size() == 4 && back.get(2).cut() && "polygon".equals(back.get(3).type));
+				pickerResult = null;
+				AreaPicker.open("Groundskeeper area", "", json -> pickerResult = json == null ? "CANCELLED" : json);
+			}
+			case 378 -> {
+				if (client.currentScreen instanceof AreaPicker picker) picker.close();
+				check("Cancel hands back nothing", "CANCELLED".equals(pickerResult) && client.currentScreen == null);
+				client.setScreen(new MapScreen());
+				MapScreen.testView(32, 32, 4);
+			}
+			case 384 -> screenshot(client, "map_11_groundskeeper_tiles");
+			case 388 -> {
+				client.setScreen(null);
+				try {
+					Files.deleteIfExists(GroundskeeperArea.file(client));
+				} catch (IOException ignored) {
+					// Only a test file.
+				}
+			}
+			case 400 -> {
 				log("Results: " + passed + " passed, " + failed + " failed");
 				client.scheduleStop();
 			}

@@ -638,6 +638,12 @@ public final class SelfTest {
 			case 2264 -> {
 				net.minecraft.entity.Entity stand = null;
 				for (net.minecraft.entity.Entity e : client.world.getEntities()) if (e instanceof net.minecraft.entity.decoration.ArmorStandEntity) stand = e;
+				// It reaches the client a few ticks after the server makes it; on a slow machine, more.
+				if (stand == null && ++framesWaited <= 100) {
+					tick--;
+					return;
+				}
+				framesWaited = 0;
 				if (stand == null) {
 					check("an armor stand to move the camera to", false);
 					break;
