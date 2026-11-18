@@ -134,6 +134,9 @@ public final class BIConfig {
 	public double mapZoom = 2;
 	/** Pins other mods put on the map, such as where Naughty or Nice last saw players. */
 	public boolean mapPins = true;
+	/** A new base reaches this far below and above where you stand (the map's "Around me"). */
+	public int newBaseBelow = 24;
+	public int newBaseAbove = 48;
 
 	// ---- Friends & data ----
 	/** Players who never trigger alerts or count as suspects (case-insensitive). */

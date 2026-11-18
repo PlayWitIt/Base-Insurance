@@ -65,6 +65,7 @@ public class SettingsScreen extends OptionsScreen {
 					r.toggle("ignore_fluids", () -> c.ignoreFlowingFluids, v -> c.ignoreFlowingFluids = v);
 					r.toggle("smart_terrain", () -> c.smartTerrain, v -> c.smartTerrain = v);
 					r.toggle("ignore_ores", () -> c.ignoreOreSwaps, v -> c.ignoreOreSwaps = v);
+					r.toggle("ignore_hidden", () -> c.ignoreHidden, v -> c.ignoreHidden = v);
 					r.toggle("ignore_pistons", () -> c.ignorePistons, v -> c.ignorePistons = v);
 					r.header("header.scanning");
 					r.toggle("track_containers", () -> c.trackContainers, v -> c.trackContainers = v);
@@ -113,6 +114,27 @@ public class SettingsScreen extends OptionsScreen {
 					r.toggle("map_damage", () -> c.mapDamageDots, v -> c.mapDamageDots = v);
 					r.toggle("map_grid", () -> c.mapGrid, v -> c.mapGrid = v);
 					r.toggle("map_pins", () -> c.mapPins, v -> c.mapPins = v);
+					r.header("header.new_base");
+					r.slider("new_base_below", 0, 384, () -> c.newBaseBelow, v -> c.newBaseBelow = v,
+							v -> Text.translatable(P + ".blocks", v).getString());
+					r.slider("new_base_above", 0, 384, () -> c.newBaseAbove, v -> c.newBaseAbove = v,
+							v -> Text.translatable(P + ".blocks", v).getString());
+					r.header("header.picture");
+					r.button("export_map", () -> {
+						net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+						if (mc.world == null) return;
+						MapExport.exportAll(mc);
+						close();
+					});
+					r.button("open_screenshots", () -> {
+						java.nio.file.Path dir = net.minecraft.client.MinecraftClient.getInstance().runDirectory.toPath().resolve("screenshots");
+						try {
+							java.nio.file.Files.createDirectories(dir);
+						} catch (java.io.IOException ignored) {
+							// Opening it says why.
+						}
+						Util.getOperatingSystem().open(dir);
+					});
 				}),
 				new Tab("friends", r -> {
 					r.note(Text.translatable(P + ".friends_note"));
@@ -154,6 +176,15 @@ public class SettingsScreen extends OptionsScreen {
 							v -> Text.translatable(P + ".events", v / 50 * 50).getString());
 					r.button("open_folder", () -> Util.getOperatingSystem().open(BIConfig.dir()));
 					r.toggle("check_updates", () -> c.checkUpdates, v -> c.checkUpdates = v);
+					if (!c.skippedVersion.isEmpty()) r.button("unskip", () -> {
+						c.skippedVersion = "";
+						BIConfig.save();
+						clearAndInit();
+					});
+					r.header("header.more");
+					r.button("keys", () -> net.minecraft.client.MinecraftClient.getInstance().setScreen(
+							new net.minecraft.client.gui.screen.option.KeybindsScreen(this, net.minecraft.client.MinecraftClient.getInstance().options)));
+					r.button("guide", () -> net.minecraft.client.MinecraftClient.getInstance().setScreen(new GuideScreen(this)));
 				}));
 	}
 

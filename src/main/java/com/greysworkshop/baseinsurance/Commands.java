@@ -29,8 +29,6 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.lit
 public final class Commands {
 	private static final long MAX_VOLUME = 16_000_000;
 	private static final int DEFAULT_RADIUS = 48;
-	private static final int DEFAULT_DOWN = 24;
-	private static final int DEFAULT_UP = 48;
 
 	private Commands() {}
 
@@ -60,6 +58,10 @@ public final class Commands {
 					mod().openLater(new MapScreen());
 					return 1;
 				}).then(literal("status").executes(Commands::mapStatus)))
+				.then(literal("picture").executes(c -> {
+					MapExport.exportAll(MinecraftClient.getInstance());
+					return 1;
+				}))
 				.then(literal("minimap").executes(c -> {
 					BaseInsuranceClient.toggleMinimap(MinecraftClient.getInstance());
 					return 1;
@@ -69,7 +71,7 @@ public final class Commands {
 						.then(argument("name", word())
 								.executes(c -> createOnMap(c, getString(c, "name")))
 								.then(argument("radius", integer(2, 256))
-										.executes(c -> create(c, getInteger(c, "radius"), DEFAULT_DOWN, DEFAULT_UP))
+										.executes(c -> create(c, getInteger(c, "radius"), BIConfig.INSTANCE.newBaseBelow, BIConfig.INSTANCE.newBaseAbove))
 										.then(argument("down", integer(0, 384))
 												.then(argument("up", integer(0, 384))
 														.executes(c -> create(c, getInteger(c, "radius"), getInteger(c, "down"), getInteger(c, "up"))))))))

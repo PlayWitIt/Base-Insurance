@@ -250,6 +250,11 @@ public final class SelfTest {
 			case 925 -> screenshot(client, "9_settings_overlay");
 			case 930 -> showSettingsTab(client, 3);
 			case 940 -> screenshot(client, "9_settings_map");
+			case 941 -> {
+				// The end of the Map tab: new bases' reach, and the picture buttons.
+				if (client.currentScreen != null) client.currentScreen.mouseScrolled(client.currentScreen.width / 2.0, client.currentScreen.height / 2.0, 0, -60);
+			}
+			case 944 -> screenshot(client, "9_settings_map_end");
 			case 945 -> showSettingsTab(client, 4);
 			case 955 -> screenshot(client, "9_settings_data");
 			case 965 -> {

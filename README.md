@@ -64,7 +64,7 @@ server and dimension, so it keeps growing every time you play.
   you join and saved, so it's ready before you press M.
 - At the bottom of the map: **Center on me**, **Show all** (zooms out to everything you've ever explored there),
   **Go to…** (type coordinates, or press **G**), **New base**, **Hide minimap / Show minimap**, the minimap's **Size**
-  (an outline shows how big it will be), and **Done**. On a narrow screen they're shortened ("Me", "Minimap ✔"; hover
+  (an outline shows how big it will be), **Picture** (save the map as a PNG) and **Done**. On a narrow screen they're shortened ("Me", "Minimap ✔"; hover
   for what they do). The minimap setting, its size and how far you zoomed are saved and kept in every game after.
   Naughty or Nice's trail radar has its own key (**K**).
 - **Full map**: follows you as you move, drag to look around, scroll to zoom from 16 pixels per block out to 4,096
@@ -76,6 +76,15 @@ server and dimension, so it keeps growing every time you play.
 - **Pins**: your own pins (gold flags) and the last 5 places you died (red crosses, added by themselves) are on the
   map and listed on the left under your bases. Click one to zoom to it; right-click it to remove it or walk there.
   They're kept per server.
+- **Save as a picture**: the **Picture** (PNG) button, or right-click → *Save map as a picture…*: **this view** (what's
+  on screen) or **the whole map** (everything you've explored in this dimension). One pixel per block; a world more
+  than 16,384 blocks across is scaled to fit (1 pixel = 2, 4, 8… blocks). It goes in your screenshots folder, with a
+  link in chat. Also `/bi picture`, or Settings → Map.
+- **How tall a base is**: when you make or resize one, **Bottom** and **Top** are Y levels, with how far each is from
+  you: "Bottom: Y 40 (you −24)". Either goes anywhere from the bottom of the world to the build limit, **Around me**
+  sets the usual 24 below you to 48 above (change those in Settings → Map), and **Full height** covers bedrock to sky.
+  A bar beside them shows the base's part of the world's height and where you are. Scroll on a slider to move it
+  one block.
 - **Measure**: shift-drag on the map for a ruler: how many blocks and which way, how long sprinting or by elytra, and
   how far it would be through the Nether.
 - Works on servers that send wrong surface heights with their chunks (common on older servers joined through
@@ -115,4 +124,4 @@ All `/bi` commands are client-side and never reach the server.
 Requires JDK 21. Run `./gradlew build`; the jar goes to `build/libs/`.
 `./gradlew runSelfTest` runs a scripted in-game test that saves screenshots to `run/screenshots/`, ending with the
 accuracy tests (`./gradlew runAccuracyTest` runs those alone, in about a minute).
-`./gradlew runMapTest` travels across a normal world and checks the map and minimap (10 checks, half the trip with the server's surface heights blanked out).
+`./gradlew runMapTest` travels across a normal world and checks the map and minimap, saving it as a picture and the height controls (28 checks, half the trip with the server's surface heights blanked out).

@@ -21,6 +21,7 @@ import net.minecraft.world.rule.GameRules;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.stream.Stream;
 
 /**
@@ -116,6 +117,17 @@ public final class MapTest {
 		if (tick == 100 + 3 * STEP_TICKS - 10) screenshot(client, "map_0_minimap_travelling");
 
 		int t = tick - travelEnd;
+		if (t > 420 && t < 470 && !pictureViewChecked && !MapExport.busy() && MapExport.last != null) {
+			pictureViewChecked = true;
+			checkPicture(client, "this view", pictureView);
+		}
+		if (t > 470 && t < 1000 && !pictureAllChecked && !MapExport.busy() && MapExport.last != null && MapExport.last.getFileName().toString().contains("_whole_")) {
+			pictureAllChecked = true;
+			int[] b = map.exploredBounds();
+			checkPicture(client, "the whole map", new int[] {b[0], b[1], b[2] - 1, b[3] - 1});
+			check("very big worlds are scaled to fit (" + MapExport.scaleFor(3_000_000, 1000) + " blocks a pixel for 3 million across)",
+					MapExport.scaleFor(3_000_000, 1000) == 256 && MapExport.scaleFor(16384, 16384) == 1 && MapExport.scaleFor(16385, 10) == 2);
+		}
 		switch (t) {
 			case 60 -> {
 				var p = client.player.getBlockPos();
@@ -300,11 +312,114 @@ public final class MapTest {
 					// Only a test file.
 				}
 			}
-			case 400 -> {
+			// Saving the map as a picture: the view on screen, then everything explored.
+			case 390 -> {
+				MapScreen m = new MapScreen();
+				client.setScreen(m);
+			}
+			case 393 -> {
+				if (client.currentScreen instanceof MapScreen m) {
+					m.testCenter();
+					m.openImageMenu(m.width / 2.0, m.height - 40);
+				}
+			}
+			case 412 -> screenshot(client, "map_12_picture_menu");
+			case 420 -> {
+				if (client.currentScreen instanceof MapScreen m) {
+					pictureView = m.viewBounds();
+					m.menuPick(5);
+				} else check("the picture menu is open", false);
+			}
+			case 470 -> {
+				// Everything explored: the trip plus the big old map.
+				MapExport.exportAll(client);
+			}
+			case 1000 -> {
+				if (!pictureAllChecked) check("the whole map saved as a picture within 26 s", false);
+				MapScreen m = MapScreen.forCreate("heighttest");
+				client.setScreen(m);
+			}
+			case 1005 -> {
+				if (client.currentScreen instanceof MapScreen m) {
+					int you = client.player.getBlockY();
+					int[] r0 = m.heightRange();
+					check("a new base starts 24 below you to 48 above (" + r0[0] + " to " + r0[1] + ", you at " + you + ")",
+							r0[0] == Math.max(client.world.getBottomY(), you - 24) && r0[1] == Math.min(client.world.getTopYInclusive(), you + 48));
+					m.setHeight(client.world.getBottomY(), client.world.getTopYInclusive());
+					int[] r1 = m.heightRange();
+					check("Full height reaches from the bottom of the world to the build limit (" + r1[0] + " to " + r1[1] + ")",
+							r1[0] == client.world.getBottomY() && r1[1] == client.world.getTopYInclusive());
+					m.setHeight(you - 10, you + 5);
+					// Scrolling on the Bottom slider moves it one block.
+					var bottom = m.children().stream().filter(c -> c instanceof net.minecraft.client.gui.widget.SliderWidget sw && sw.getY() == 88).findFirst().orElse(null);
+					if (bottom != null) bottom.mouseScrolled(0, 0, 0, 1);
+					int[] r2 = m.heightRange();
+					check("the sliders go by Y level, and scrolling moves one block (" + r2[0] + " to " + r2[1] + ")", r2[0] == you - 9 && r2[1] == you + 5);
+					m.setHeight(you + 20, you + 10);
+					int[] r3 = m.heightRange();
+					check("the top can't go under the bottom (" + r3[0] + " to " + r3[1] + ")", r3[0] <= r3[1]);
+					m.setHeight(you - 24, you + 48);
+				}
+			}
+			case 1008 -> screenshot(client, "map_13_new_base_height");
+			case 1012 -> client.setScreen(null);
+			case 1020 -> {
 				log("Results: " + passed + " passed, " + failed + " failed");
 				client.scheduleStop();
 			}
 			default -> {}
+		}
+	}
+
+	private static int[] pictureView;
+	private static boolean pictureViewChecked, pictureAllChecked;
+
+	/**
+	 * The saved PNG is the right size, and its pixels are the map's colours at those blocks. Only small patches are
+	 * read back (along the trip, where the map has something), so even a huge picture needs little memory.
+	 */
+	private static void checkPicture(MinecraftClient client, String what, int[] b) {
+		Path file = MapExport.last;
+		long across = (long) b[2] - b[0] + 1, deep = (long) b[3] - b[1] + 1;
+		int scale = MapExport.scaleFor(across, deep);
+		int w = (int) ((across + scale - 1) / scale), h = (int) ((deep + scale - 1) / scale);
+		try (var in = javax.imageio.ImageIO.createImageInputStream(file.toFile())) {
+			var reader = javax.imageio.ImageIO.getImageReadersByFormatName("png").next();
+			reader.setInput(in, false, true);
+			int iw = reader.getWidth(0), ih = reader.getHeight(0);
+			WorldMap map = BaseInsuranceClient.INSTANCE.worldMap;
+			int same = 0, mapped = 0;
+			// A small picture is checked all over; a big one in patches along the trip (east along z = 0, then south
+			// along x = 960).
+			List<int[]> spots = new java.util.ArrayList<>();
+			if ((long) iw * ih <= 4_000_000) spots.add(new int[] {b[0], b[1], iw, ih});
+			else for (int k = 0; k <= 6; k++) {
+				spots.add(new int[] {k * STEP_BLOCKS, 0, 16, 16});
+				spots.add(new int[] {6 * STEP_BLOCKS, k * STEP_BLOCKS, 16, 16});
+			}
+			{
+				for (int[] at : spots) {
+					int px = (int) Math.floorDiv(at[0] - b[0], scale), pz = (int) Math.floorDiv(at[1] - b[1], scale);
+					if (px < 0 || pz < 0 || px >= iw || pz >= ih) continue;
+					int rw = Math.min(at[2], iw - px), rh = Math.min(at[3], ih - pz);
+					var param = reader.getDefaultReadParam();
+					param.setSourceRegion(new java.awt.Rectangle(px, pz, rw, rh));
+					var img = reader.read(0, param);
+					for (int dz = 0; dz < rh; dz++) {
+						for (int dx = 0; dx < rw; dx++) {
+							int want = map.colorAt(b[0] + (px + dx) * scale, b[1] + (pz + dz) * scale);
+							if ((want >>> 24) == 0) continue;
+							mapped++;
+							if ((want | 0xFF000000) == img.getRGB(dx, dz)) same++;
+						}
+					}
+				}
+			}
+			reader.dispose();
+			check(String.format("%s saved as a picture: %s, %d × %d (expected %d × %d, 1 px = %d blocks), %d of %d mapped pixels match the map",
+					what, file.getFileName(), iw, ih, w, h, scale, same, mapped), iw == w && ih == h && mapped > 100 && same == mapped);
+		} catch (IOException | RuntimeException e) {
+			check(what + " saved as a picture: " + e, false);
 		}
 	}
 

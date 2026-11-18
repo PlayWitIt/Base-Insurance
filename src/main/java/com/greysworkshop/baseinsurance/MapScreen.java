@@ -56,14 +56,14 @@ public class MapScreen extends Screen {
 	private final String initialName;
 	/** The base being resized, or null when making a new one. */
 	private final Base editing;
-	/** Resizing: the bottom and top (absolute Y). */
+	/** The bottom and top of the base (absolute Y), making a new one or resizing. */
 	private int editMinY, editMaxY;
+	/** The two height sliders, so the quick buttons can move them. */
+	private YSlider bottomSlider, topSlider;
 
 	// Create mode: the proposed area and height range.
 	private int selMinX, selMaxX, selMinZ, selMaxZ;
 	private int baseY;
-	private int down = 24;
-	private int up = 48;
 	private TextFieldWidget nameField;
 	private ButtonWidget confirmButton;
 	/** The map's "Minimap: on/off" button (none while creating or resizing a base). */
@@ -121,6 +121,9 @@ public class MapScreen extends Screen {
 			}
 			following = !createMode;
 			baseY = p.getY();
+			// A new base: from 24 below your feet to 48 above, as before; the sliders go anywhere from there.
+			editMinY = Math.max(client.world.getBottomY(), baseY - BIConfig.INSTANCE.newBaseBelow);
+			editMaxY = Math.min(client.world.getTopYInclusive(), baseY + BIConfig.INSTANCE.newBaseAbove);
 			selMinX = p.getX() - 48;
 			selMaxX = p.getX() + 48;
 			selMinZ = p.getZ() - 48;
@@ -256,8 +259,8 @@ public class MapScreen extends Screen {
 	@Override
 	protected void init() {
 		if (!createMode) {
-			// Center, Show all, Go to, New base, Minimap on/off, Minimap size ... Done: as wide as fits, up to 90 each.
-			int bw = Math.max(36, Math.min(90, (width - 12 - 6 * 4) / 7));
+			// Center, Show all, Go to, New base, Minimap on/off, Minimap size, Picture ... Done: as wide as fits, up to 90 each.
+			int bw = Math.max(36, Math.min(90, (width - 12 - 7 * 4) / 8));
 			int by = height - 26;
 			// Short labels when the buttons are narrow, so none is cut off; the tooltips say the rest.
 			compact = bw < 76;
@@ -274,6 +277,9 @@ public class MapScreen extends Screen {
 					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.minimap_tip"))).dimensions(6 + 4 * (bw + 4), by, bw, 20).build());
 			sizeSlider = addDrawableChild(minimapSizeSlider(6 + 5 * (bw + 4), by, bw));
 			sizeSlider.active = BIConfig.INSTANCE.minimap;
+			addDrawableChild(ButtonWidget.builder(Text.translatable(compact ? "baseinsurance.map.picture_short" : "baseinsurance.map.picture"),
+							b -> openImageMenu(b.getX(), b.getY() - 4))
+					.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.picture_tip"))).dimensions(6 + 6 * (bw + 4), by, bw, 20).build());
 			addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, b -> close())
 					.dimensions(width - 6 - bw, by, bw, 20).build());
 			int fw = Math.min(260, width - 40);
@@ -293,9 +299,7 @@ public class MapScreen extends Screen {
 				int across = editing.maxX - editing.minX + 1, deep = editing.maxZ - editing.minZ + 1;
 				zoom = MathHelper.clamp(Math.min((mapRight() - 80) / (double) across, (height - 80) / (double) deep), MIN_ZOOM, MAX_ZOOM);
 			}
-			int bottom = client.world.getBottomY(), top = client.world.getTopYInclusive();
-			addDrawableChild(slider(x, 88, w, "bottom", bottom, top, () -> editMinY, v -> editMinY = Math.min(v, editMaxY)));
-			addDrawableChild(slider(x, 112, w, "top", bottom, top, () -> editMaxY, v -> editMaxY = Math.max(v, editMinY)));
+			heightControls(x, w);
 			confirmButton = addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.save_size"), b -> confirm())
 					.dimensions(x, height - 50, w, 20).build());
 			addDrawableChild(ButtonWidget.builder(ScreenTexts.CANCEL, b -> close())
@@ -308,8 +312,7 @@ public class MapScreen extends Screen {
 		nameField.setText(nameField.getText().isEmpty() && initialName != null ? initialName : nameField.getText());
 		nameField.setChangedListener(t -> updateConfirm());
 		addDrawableChild(nameField);
-		addDrawableChild(slider(x, 88, w, "down", 0, 192, () -> down, v -> down = v));
-		addDrawableChild(slider(x, 112, w, "up", 0, 320, () -> up, v -> up = v));
+		heightControls(x, w);
 		confirmButton = addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.confirm"), b -> confirm())
 				.dimensions(x, height - 50, w, 20).build());
 		addDrawableChild(ButtonWidget.builder(ScreenTexts.CANCEL, b -> close())
@@ -388,7 +391,7 @@ public class MapScreen extends Screen {
 			if (w.getX() < 0 || w.getX() + w.getWidth() > width) return false;
 			if (i > 0 && row.get(i - 1).getX() + row.get(i - 1).getWidth() > w.getX()) return false;
 		}
-		return row.size() == 7;
+		return row.size() == 8;
 	}
 
 	private SliderWidget slider(int x, int y, int w, String key, int min, int max, IntSupplier getter, IntConsumer setter) {
@@ -415,13 +418,116 @@ public class MapScreen extends Screen {
 	}
 
 	private int minY() {
-		if (editing != null) return editMinY;
-		return Math.max(client.world.getBottomY(), baseY - down);
+		return editMinY;
 	}
 
 	private int maxY() {
-		if (editing != null) return editMaxY;
-		return Math.min(client.world.getTopYInclusive(), baseY + up);
+		return editMaxY;
+	}
+
+	/** Width of the side view of the height, at the panel's right edge. */
+	private static final int GAUGE = 10;
+
+	/**
+	 * How tall the base is: the bottom and top as Y levels (and how far each is from you), anywhere from the bottom of the
+	 * world to the build limit; two quick choices under them. Scroll on a slider to move it one block.
+	 */
+	private void heightControls(int x, int w) {
+		int bottom = client.world.getBottomY(), top = client.world.getTopYInclusive();
+		int sw = w - GAUGE - 4;
+		bottomSlider = addDrawableChild(new YSlider(x, 88, sw, "bottom", bottom, top, () -> editMinY, v -> {
+			editMinY = v;
+			if (editMaxY < v && topSlider != null) topSlider.set(v);
+		}));
+		topSlider = addDrawableChild(new YSlider(x, 110, sw, "top", bottom, top, () -> editMaxY, v -> {
+			editMaxY = v;
+			if (editMinY > v && bottomSlider != null) bottomSlider.set(v);
+		}));
+		int half = (w - 4) / 2;
+		addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.around_me"), b -> setHeight(baseY - BIConfig.INSTANCE.newBaseBelow, baseY + BIConfig.INSTANCE.newBaseAbove))
+				.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.around_me_tip"))).dimensions(x, 132, half, 18).build());
+		addDrawableChild(ButtonWidget.builder(Text.translatable("baseinsurance.map.full_height"), b -> setHeight(bottom, top))
+				.tooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map.full_height_tip"))).dimensions(x + half + 4, 132, half, 18).build());
+	}
+
+	/** Moves both sliders (clamped to the world). Public for the self-test. */
+	public void setHeight(int low, int high) {
+		int bottom = client.world.getBottomY(), top = client.world.getTopYInclusive();
+		low = MathHelper.clamp(low, bottom, top);
+		high = MathHelper.clamp(high, low, top);
+		editMinY = low;
+		editMaxY = high;
+		if (bottomSlider != null) bottomSlider.set(low);
+		if (topSlider != null) topSlider.set(high);
+		updateConfirm();
+	}
+
+	/** The base's bottom and top; for the self-test. */
+	public int[] heightRange() {
+		return new int[] {minY(), maxY()};
+	}
+
+	/** A Y level slider: "Bottom: Y 40 (you −24)". Scrolling moves it one block. */
+	private final class YSlider extends SliderWidget {
+		private final String key;
+		private final int min, max;
+		private final IntConsumer setter;
+
+		YSlider(int x, int y, int w, String key, int min, int max, IntSupplier getter, IntConsumer setter) {
+			super(x, y, w, 20, Text.empty(), (getter.getAsInt() - min) / (double) (max - min));
+			this.key = key;
+			this.min = min;
+			this.max = max;
+			this.setter = setter;
+			updateMessage();
+			setTooltip(net.minecraft.client.gui.tooltip.Tooltip.of(Text.translatable("baseinsurance.map." + key + "_tip")));
+		}
+
+		int current() {
+			return min + (int) Math.round(MathHelper.clamp(value, 0, 1) * (max - min));
+		}
+
+		void set(int y) {
+			value = (MathHelper.clamp(y, min, max) - min) / (double) (max - min);
+			updateMessage();
+			setter.accept(current());
+		}
+
+		@Override
+		protected void updateMessage() {
+			int y = current(), d = y - baseY;
+			String rel = d == 0 ? Text.translatable("baseinsurance.map.at_you").getString()
+					: Text.translatable("baseinsurance.map.from_you", (d > 0 ? "+" : "−") + Math.abs(d)).getString();
+			setMessage(Text.translatable("baseinsurance.map." + key, y, rel));
+		}
+
+		@Override
+		protected void applyValue() {
+			setter.accept(current());
+			updateConfirm();
+		}
+
+		@Override
+		public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+			if (vertical == 0) return false;
+			set(current() + (vertical > 0 ? 1 : -1));
+			updateConfirm();
+			return true;
+		}
+	}
+
+	/** Side view: the whole height of the world, the base's part in gold, and a white line where you stand. */
+	private void drawGauge(DrawContext context) {
+		if (bottomSlider == null) return;
+		int bottom = client.world.getBottomY(), top = client.world.getTopYInclusive();
+		int x1 = width - 4, x0 = x1 - GAUGE, y0 = 88, y1 = 130;
+		java.util.function.IntUnaryOperator at = yl -> y1 - (int) Math.round((yl - bottom) / (double) (top - bottom) * (y1 - y0));
+		context.fill(x0, y0, x1, y1, 0xFF2A2A3A);
+		int sea = client.world.getSeaLevel();
+		if (sea > bottom && sea < top) context.fill(x0, at.applyAsInt(sea), x1, at.applyAsInt(sea) + 1, 0xFF3060C0);
+		context.fill(x0 + 1, at.applyAsInt(maxY() + 1), x1 - 1, Math.max(at.applyAsInt(minY()), at.applyAsInt(maxY() + 1) + 1), GOLD);
+		int you = at.applyAsInt(baseY);
+		context.fill(x0 - 2, you, x1 + 1, you + 1, WHITE);
 	}
 
 	private long volume() {
@@ -520,6 +626,7 @@ public class MapScreen extends Screen {
 
 	/** Opens the right-click menu for the spot under the mouse. */
 	void openMenu(double mx, double my) {
+		imageMenu = false;
 		menu = new int[] {(int) mx, (int) my, (int) Math.floor(worldX(mx)), (int) Math.floor(worldZ(my))};
 		menuNote = null;
 		menuPin = pinAt(mx, my);
@@ -531,9 +638,42 @@ public class MapScreen extends Screen {
 		mouseClicked(new Click(screenX(bx + 0.5), screenY(bz + 0.5), new net.minecraft.client.input.MouseInput(1, 0)), false);
 	}
 
-	/** A menu row: 0 walks there with Baritone, 1 copies the coordinates, 2 pins it, 3 removes the pin, 4 measures from you. */
+	/** The "Save as a picture" menu (the Picture button): this view or the whole map. */
+	private boolean imageMenu;
+
+	void openImageMenu(double mx, double my) {
+		openMenu(mx, my);
+		imageMenu = true;
+		menuPin = null;
+	}
+
+	/** The blocks on screen now {minX, minZ, maxX, maxZ}. */
+	int[] viewBounds() {
+		return new int[] {(int) Math.floor(worldX(0)), (int) Math.floor(worldZ(0)), (int) Math.ceil(worldX(mapRight())) - 1, (int) Math.ceil(worldZ(height)) - 1};
+	}
+
+	/**
+	 * A menu row: 0 walks there with Baritone, 1 copies the coordinates, 2 pins it, 3 removes the pin, 4 measures from
+	 * you, 5 saves this view as a picture, 6 the whole map, 7 opens the picture menu.
+	 */
 	void menuPick(int which) {
 		int x = menu[2], z = menu[3];
+		if (which == 5) {
+			int[] v = viewBounds();
+			menu = null;
+			MapExport.export(client, v[0], v[1], v[2], v[3], "view");
+			return;
+		}
+		if (which == 6) {
+			menu = null;
+			MapExport.exportAll(client);
+			return;
+		}
+		if (which == 7) {
+			imageMenu = true;
+			menuPin = null;
+			return;
+		}
 		if (which == 2) {
 			menu = null;
 			pinX = x;
@@ -572,24 +712,40 @@ public class MapScreen extends Screen {
 		menuRows.clear();
 		TextRenderer font = textRenderer;
 		boolean can = Travel.available();
-		String title = (menuPin != null ? menuPin.name + ":  " : "") + "X " + menu[2] + "  Z " + menu[3];
+		String title = imageMenu ? "Save the map as a picture (PNG)" : (menuPin != null ? menuPin.name + ":  " : "") + "X " + menu[2] + "  Z " + menu[3];
 		// What's worth knowing about the spot: how far, which way, and the same place in the other dimension.
 		List<String> facts = new ArrayList<>();
-		if (client.player != null) {
+		if (imageMenu) {
+			int[] v = viewBounds();
+			facts.add(pictureSize("This view", v[2] - v[0] + 1L, v[3] - v[1] + 1L));
+			int[] b = BaseInsuranceClient.INSTANCE.worldMap.exploredBounds();
+			facts.add(b == null ? "Whole map: nothing mapped yet" : pictureSize("Whole map", b[2] - b[0], b[3] - b[1]));
+			facts.add("Saved in your screenshots folder.");
+			if (MapExport.busy()) facts.add("Still saving the last one…");
+		} else if (client.player != null) {
 			double dx = menu[2] + 0.5 - client.player.getX(), dz = menu[3] + 0.5 - client.player.getZ();
 			facts.add(String.format(Locale.ROOT, "%,d blocks %s of you", Math.round(Math.hypot(dx, dz)), compass(dx, dz)));
 		}
-		String dim = BaseManager.dimensionKey(client.world);
+		String dim = imageMenu ? "" : BaseManager.dimensionKey(client.world);
 		if (dim.equals("minecraft:overworld")) facts.add(String.format(Locale.ROOT, "In the Nether: X %d  Z %d", Math.floorDiv(menu[2], 8), Math.floorDiv(menu[3], 8)));
 		else if (dim.equals("minecraft:the_nether")) facts.add(String.format(Locale.ROOT, "In the Overworld: X %d  Z %d", menu[2] * 8, menu[3] * 8));
-		List<String> labels = new ArrayList<>(List.of(can ? "Walk here" : "Walk here (needs Baritone)", "Copy coordinates", "Pin here…"));
-		List<Integer> ids = new ArrayList<>(List.of(0, 1, 2));
-		if (menuPin != null) {
-			labels.add("Remove this pin");
-			ids.add(3);
+		List<String> labels = new ArrayList<>();
+		List<Integer> ids = new ArrayList<>();
+		if (imageMenu) {
+			labels.addAll(List.of("Save this view", "Save the whole map"));
+			ids.addAll(List.of(5, 6));
+		} else {
+			labels.addAll(List.of(can ? "Walk here" : "Walk here (needs Baritone)", "Copy coordinates", "Pin here…"));
+			ids.addAll(List.of(0, 1, 2));
+			if (menuPin != null) {
+				labels.add("Remove this pin");
+				ids.add(3);
+			}
+			labels.add("Measure from me");
+			ids.add(4);
+			labels.add("Save map as a picture…");
+			ids.add(7);
 		}
-		labels.add("Measure from me");
-		ids.add(4);
 		String note = menuNote;
 		int w = font.getWidth(title);
 		for (String l : labels) w = Math.max(w, font.getWidth(l));
@@ -623,6 +779,12 @@ public class MapScreen extends Screen {
 			context.drawTextWithShadow(font, line, x + 6, ry, 0xFFFF7070);
 			ry += 10;
 		}
+	}
+
+	/** "This view: 900 × 500 blocks", and the picture's scale when it's too big for one pixel a block. */
+	private static String pictureSize(String what, long across, long deep) {
+		int scale = MapExport.scaleFor(across, deep);
+		return String.format(Locale.ROOT, "%s: %,d × %,d blocks%s", what, across, deep, scale == 1 ? "" : ", 1 px = " + scale + " blocks");
 	}
 
 	/** Which part of the proposed area (if any) is under the mouse. */
@@ -1151,13 +1313,14 @@ public class MapScreen extends Screen {
 		int across = selMaxX - selMinX + 1, depth = selMaxZ - selMinZ + 1, tall = maxY() - minY() + 1;
 		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.area", across, depth), x, 64, WHITE);
 		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.height", minY(), maxY(), tall), x, 75, WHITE);
+		drawGauge(context);
 
 		long volume = volume();
-		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.volume", compact(volume)), x, 138,
+		context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.volume", compact(volume)), x, 154,
 				volume > 16_000_000 ? 0xFFFF5050 : WHITE);
 		int loaded = loadedPercent();
 		if (editing == null) {
-			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.loaded", loaded), x, 149,
+			context.drawTextWithShadow(font, Text.translatable("baseinsurance.map.loaded", loaded), x, 165,
 					loaded == 100 ? 0xFF50FF70 : GOLD);
 		}
 
@@ -1165,7 +1328,7 @@ public class MapScreen extends Screen {
 		boolean showError = error != null && (editing != null || nameField != null && !nameField.getText().isEmpty());
 		Text note = showError ? Text.literal(error) : editing != null ? Text.translatable("baseinsurance.map.edit_note")
 				: Text.translatable(loaded == 100 ? "baseinsurance.map.loaded_all" : "baseinsurance.map.loaded_some");
-		int textY = editing == null ? 162 : 151;
+		int textY = editing == null ? 177 : 166;
 		// Whole sentences only: as many as fit, never one cut off halfway.
 		int room = Math.max(0, (height - 52 - textY + 1) / 10);
 		String text = note.getString();
@@ -1214,6 +1377,11 @@ public class MapScreen extends Screen {
 				context.fill(x, y, x + 1, y + 1, 0xC0FFE060);
 			}
 		}
+	}
+
+	/** Self-test: centre on you, as the Center button does. */
+	void testCenter() {
+		centerOnPlayer();
 	}
 
 	static double testCenterX() {
